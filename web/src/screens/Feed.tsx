@@ -1,0 +1,271 @@
+import { useEffect, useMemo, useState } from 'react'
+import { api } from '../api'
+import { useAuth } from '../auth'
+import { TopBar } from '../components/TopBar'
+import { LeftRail } from '../components/LeftRail'
+import { MapBackdrop } from '../components/MapBackdrop'
+import { AlertDetailPanel } from '../components/AlertDetailPanel'
+import {
+  SEVERITY_COLOR,
+  SEVERITY_TEXT,
+  fmtFeedTime,
+  dayGroup,
+  modesLabel,
+} from '../lib/format'
+import type { Alert, Severity } from '../types'
+
+const DAY_ORDER = ['Today', 'Yesterday', 'Earlier this week', 'Earlier']
+const SEVERITIES: Severity[] = ['critical', 'warning', 'watch', 'info']
+
+function FeedCard({ alert, onClick }: { alert: Alert; onClick: () => void }) {
+  const [hover, setHover] = useState(false)
+  const loc = alert.locations[0]
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        borderRadius: 14,
+        background: hover ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.04)',
+        border: '1px solid rgba(255,255,255,.09)',
+        borderTop: `3px solid ${SEVERITY_COLOR[alert.severity]}`,
+        padding: '16px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        cursor: 'pointer',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span
+          style={{
+            font: "700 10px var(--font-display)",
+            color: SEVERITY_TEXT[alert.severity],
+            letterSpacing: '1px',
+          }}
+        >
+          {alert.severity.toUpperCase()} · {alert.category.toUpperCase()}
+        </span>
+        <span style={{ font: '400 10.5px var(--font-body)', color: 'var(--t-35)' }}>
+          {fmtFeedTime(alert.published_at)}
+        </span>
+      </div>
+      <div style={{ font: '600 14px/1.4 var(--font-display)', color: '#fff' }}>{alert.title}</div>
+      <div
+        style={{
+          font: '400 12px/1.55 var(--font-body)',
+          color: 'var(--t-60)',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}
+      >
+        {alert.description}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          font: '400 11px var(--font-body)',
+          color: 'var(--t-45)',
+        }}
+      >
+        {loc && (
+          <span>
+            {loc.flag} {loc.name.split(' — ')[0]} · {modesLabel(loc.modes)} · {alert.valid_to_label}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <span style={{ color: 'var(--t-55)' }}>{alert.author.name}</span>
+      </div>
+    </div>
+  )
+}
+
+function ScopeChip({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+  return (
+    <span
+      onClick={onClick}
+      style={{
+        padding: '6px 14px',
+        borderRadius: 16,
+        cursor: 'pointer',
+        background: active ? 'var(--yellow-tint)' : 'transparent',
+        border: `1px solid ${active ? 'var(--yellow-border-strong)' : 'var(--border-strong)'}`,
+        font: '500 11.5px var(--font-body)',
+        color: active ? 'var(--agl-yellow)' : 'var(--t-55)',
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
+export default function Feed() {
+  const { user } = useAuth()
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [scope, setScope] = useState<'all' | 'mine'>('all')
+  const [sevFilter, setSevFilter] = useState<Set<Severity>>(new Set())
+  const [selected, setSelected] = useState<Alert | null>(null)
+
+  useEffect(() => {
+    void api.feed('published').then(setAlerts).catch(() => setAlerts([]))
+  }, [])
+
+  const perimeter = user?.rights.internal_countries ?? []
+
+  const visible = useMemo(() => {
+    return alerts.filter((a) => {
+      if (scope === 'mine' && !a.locations.some((l) => perimeter.includes(l.country))) return false
+      if (sevFilter.size && !sevFilter.has(a.severity)) return false
+      return true
+    })
+  }, [alerts, scope, sevFilter, perimeter])
+
+  const counts = useMemo(() => {
+    const c: Record<Severity, number> = { critical: 0, warning: 0, watch: 0, info: 0 }
+    for (const a of alerts) c[a.severity]++
+    return c
+  }, [alerts])
+
+  const groups = useMemo(() => {
+    const map = new Map<string, Alert[]>()
+    for (const a of visible) {
+      const g = dayGroup(a.published_at)
+      if (!map.has(g)) map.set(g, [])
+      map.get(g)!.push(a)
+    }
+    return DAY_ORDER.filter((g) => map.has(g)).map((g) => [g, map.get(g)!] as const)
+  }, [visible])
+
+  function toggleSev(s: Severity) {
+    setSevFilter((prev) => {
+      const next = new Set(prev)
+      next.has(s) ? next.delete(s) : next.add(s)
+      return next
+    })
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
+      <MapBackdrop opacity={0.45} blur={2} overlay="rgba(8,14,26,.5)" />
+      <TopBar breadcrumb="Live feed" showCreate />
+      <LeftRail />
+
+      <div
+        style={{
+          position: 'absolute',
+          left: 100,
+          right: 24,
+          top: 92,
+          bottom: 24,
+          borderRadius: 18,
+          background: 'var(--glass-90)',
+          border: '1px solid var(--border-mid)',
+          backdropFilter: 'blur(18px)',
+          boxShadow: 'var(--shadow-panel)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        {/* header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            padding: '20px 26px',
+            borderBottom: '1px solid rgba(255,255,255,.08)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ font: '600 17px var(--font-display)', color: '#fff' }}>Live feed</div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              height: 28,
+              padding: '0 12px',
+              borderRadius: 14,
+              background: 'rgba(255,255,255,.05)',
+              border: '1px solid var(--border-soft)',
+            }}
+          >
+            <span className="glow-dot" style={{ width: 7, height: 7, background: 'var(--agl-orange)' }} />
+            <span style={{ font: '500 11px var(--font-body)', color: 'var(--t-65)' }}>
+              Updated just now
+            </span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <ScopeChip active={scope === 'all'} onClick={() => setScope('all')}>
+              All alerts
+            </ScopeChip>
+            <ScopeChip active={scope === 'mine'} onClick={() => setScope('mine')}>
+              My perimeter
+            </ScopeChip>
+          </div>
+          <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,.1)' }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {SEVERITIES.map((s) => (
+              <span
+                key={s}
+                onClick={() => toggleSev(s)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderRadius: 16,
+                  cursor: 'pointer',
+                  border: `1px solid ${sevFilter.has(s) ? 'var(--yellow-border-strong)' : 'var(--border-strong)'}`,
+                  background: sevFilter.has(s) ? 'var(--yellow-tint)' : 'transparent',
+                  font: '500 11.5px var(--font-body)',
+                  color: 'var(--t-70, rgba(255,255,255,.7))',
+                }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: SEVERITY_COLOR[s] }} />
+                {counts[s]}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* body */}
+        <div className="scroll-y" style={{ flex: 1, padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {groups.length === 0 && (
+            <div style={{ color: 'var(--t-45)', font: '400 13px var(--font-body)', textAlign: 'center', marginTop: 40 }}>
+              No alerts match these filters.
+            </div>
+          )}
+          {groups.map(([group, groupAlerts]) => (
+            <div key={group} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div
+                style={{
+                  font: '600 10.5px var(--font-display)',
+                  color: 'var(--t-40)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1.5px',
+                }}
+              >
+                {group}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {groupAlerts.map((a) => (
+                  <FeedCard key={a.id} alert={a} onClick={() => setSelected(a)} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {selected && <AlertDetailPanel alert={selected} onClose={() => setSelected(null)} />}
+    </div>
+  )
+}

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+server/.venv/
+*.db
+server/swan.db
+
+# Env
+.env
+server/.env
+
+# Node
+node_modules/
+web/node_modules/
+web/dist/
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

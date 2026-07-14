@@ -1,0 +1,15 @@
+{
+  "name": "swan-dev",
+  "private": true,
+  "description": "Dev launcher for the SWAN Phase 1 app (backend + frontend).",
+  "scripts": {
+    "setup": "cd server && uv sync && cd ../web && npm install",
+    "seed": "cd server && uv run python -m app.seed",
+    "dev:api": "cd server && uv run uvicorn app.main:app --reload --port 8000",
+    "dev:web": "cd web && npm run dev",
+    "dev": "concurrently -n api,web -c blue,magenta -k \"npm:dev:api\" \"npm:dev:web\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

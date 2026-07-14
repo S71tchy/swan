@@ -1,0 +1,183 @@
+/* SWAN design tokens — values read directly from the approved "Ops Deck" mock.
+   Colours: AGL charter (spec §12). Secondary colours (orange/grey/turquoise/
+   dark-orange) are used ONLY for map/severity/decoration, never for text. */
+:root {
+  /* Brand */
+  --agl-navy: #1b365f;
+  --agl-yellow: #eed58e;
+  --agl-yellow-hi: #f5e4ae;
+  --agl-orange: #ed8c00;
+  --agl-dark-orange: #cf4527;
+  --agl-grey: #b2b4be;
+  --agl-turquoise: #00a6c1;
+
+  /* Chrome / map */
+  --bg-deep: #0d1b30;
+  --bg-body: #0a1220;
+  --sea-0: #13253f;
+  --sea-1: #0b1729;
+  --land: #1e3556;
+  --coast: #2c4a76;
+
+  /* Severity ramp */
+  --sev-info: #b2b4be;
+  --sev-watch: #eed58e;
+  --sev-warning: #ed8c00;
+  --sev-critical: #cf4527;
+  --sev-critical-text: #e88e75;
+
+  /* Glass panels */
+  --glass-80: rgba(15, 27, 46, 0.8);
+  --glass-82: rgba(15, 27, 46, 0.82);
+  --glass-88: rgba(15, 27, 46, 0.88);
+  --glass-90: rgba(15, 27, 46, 0.9);
+  --glass-92: rgba(15, 27, 46, 0.92);
+  --glass-97: rgba(15, 27, 46, 0.97);
+  --glass-slideover: rgba(12, 21, 38, 0.97);
+  --border-soft: rgba(255, 255, 255, 0.1);
+  --border-mid: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --yellow-border: rgba(238, 213, 142, 0.3);
+  --yellow-border-strong: rgba(238, 213, 142, 0.4);
+  --yellow-tint: rgba(238, 213, 142, 0.14);
+  --yellow-tint-soft: rgba(238, 213, 142, 0.08);
+
+  /* Text opacities on dark */
+  --t-100: #ffffff;
+  --t-80: rgba(255, 255, 255, 0.8);
+  --t-75: rgba(255, 255, 255, 0.75);
+  --t-65: rgba(255, 255, 255, 0.65);
+  --t-60: rgba(255, 255, 255, 0.6);
+  --t-55: rgba(255, 255, 255, 0.55);
+  --t-50: rgba(255, 255, 255, 0.5);
+  --t-45: rgba(255, 255, 255, 0.45);
+  --t-40: rgba(255, 255, 255, 0.4);
+  --t-35: rgba(255, 255, 255, 0.35);
+  --t-30: rgba(255, 255, 255, 0.3);
+
+  /* Type */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+
+  /* Shadows */
+  --shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 40px 100px rgba(0, 0, 0, 0.6);
+  --shadow-cta: 0 4px 18px rgba(238, 213, 142, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-body);
+  color: var(--t-100);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--agl-yellow);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--agl-yellow-hi);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* Shared animations from the mock */
+@keyframes swanPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+@keyframes swanGlow {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes swanFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes swanScaleIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes swanSlideIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes swanSlideOver {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Utility helpers */
+.glow-dot {
+  border-radius: 50%;
+  animation: swanGlow 2s infinite;
+  flex: none;
+}
+
+.scroll-y {
+  overflow-y: auto;
+}
+.scroll-y::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-y::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+.scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}

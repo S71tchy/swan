@@ -1,0 +1,640 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api } from '../api'
+import { MapBackdrop } from '../components/MapBackdrop'
+import { Button } from '../components/ui'
+import { PublishDialogs } from '../components/PublishDialogs'
+import { SEVERITY_COLOR, MODE_GLYPH, MODE_LABEL } from '../lib/format'
+import type { ExternalVariant, Flow, LocationBlock, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
+
+const MODES: TransportMode[] = ['sea', 'road', 'air', 'rail', 'warehouse']
+const FLOWS: { value: Flow; label: string }[] = [
+  { value: 'import', label: 'Import' },
+  { value: 'export', label: 'Export' },
+  { value: 'both', label: 'Both' },
+]
+const SEVERITIES: Severity[] = ['info', 'watch', 'warning', 'critical']
+
+const req = <span style={{ color: 'var(--agl-orange)' }}> *</span>
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ font: '600 11px var(--font-body)', color: 'var(--t-55)', marginBottom: 6 }}>
+      {children}
+    </div>
+  )
+}
+
+const fieldStyle: React.CSSProperties = {
+  height: 44,
+  borderRadius: 12,
+  background: 'rgba(255,255,255,.05)',
+  border: '1px solid var(--border-strong)',
+  padding: '0 14px',
+  color: '#fff',
+  font: '500 13px var(--font-body)',
+  width: '100%',
+  outline: 'none',
+}
+
+type DraftLocation = Partial<LocationBlock> & { modes: TransportMode[]; flow: Flow }
+
+function emptyLocation(): DraftLocation {
+  return { modes: [], flow: 'both' }
+}
+
+function LocationPicker({
+  value,
+  onPick,
+}: {
+  value: DraftLocation
+  onPick: (p: Place) => void
+}) {
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<Place[]>([])
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    void api.places(q).then(setResults).catch(() => setResults([]))
+  }, [q, open])
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...fieldStyle, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+      >
+        📍{' '}
+        {value.name ? (
+          <span>{value.name}</span>
+        ) : (
+          <span style={{ color: 'var(--t-40)' }}>Search a place…</span>
+        )}
+      </div>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 48,
+            left: 0,
+            right: 0,
+            zIndex: 30,
+            borderRadius: 12,
+            background: 'var(--glass-97)',
+            border: '1px solid var(--border-strong)',
+            boxShadow: 'var(--shadow-panel)',
+            overflow: 'hidden',
+          }}
+        >
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Type a port, city or border…"
+            style={{ ...fieldStyle, height: 40, borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border-soft)' }}
+          />
+          <div className="scroll-y" style={{ maxHeight: 200 }}>
+            {results.map((p) => (
+              <div
+                key={p.code}
+                onClick={() => {
+                  onPick(p)
+                  setOpen(false)
+                  setQ('')
+                }}
+                style={{
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  font: '500 12.5px var(--font-body)',
+                  color: 'var(--t-80)',
+                  borderBottom: '1px solid rgba(255,255,255,.05)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.05)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                {p.flag} {p.label} · {p.country_name}
+              </div>
+            ))}
+            {results.length === 0 && (
+              <div style={{ padding: '10px 14px', color: 'var(--t-40)', font: '400 12px var(--font-body)' }}>
+                No matches
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LocationBlockEditor({
+  block,
+  onChange,
+  index,
+  onRemove,
+  canRemove,
+}: {
+  block: DraftLocation
+  onChange: (b: DraftLocation) => void
+  index: number
+  onRemove: () => void
+  canRemove: boolean
+}) {
+  function toggleMode(m: TransportMode) {
+    const has = block.modes.includes(m)
+    onChange({ ...block, modes: has ? block.modes.filter((x) => x !== m) : [...block.modes, m] })
+  }
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        border: '1px solid var(--border-mid)',
+        background: 'rgba(255,255,255,.03)',
+        padding: 16,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ font: '600 11px var(--font-display)', color: 'var(--t-60)', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+          Location {index + 1}
+        </div>
+        {canRemove && (
+          <span onClick={onRemove} style={{ font: '500 11px var(--font-body)', color: 'var(--t-45)', cursor: 'pointer' }}>
+            Remove
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.6fr 1fr', gap: 14, alignItems: 'end' }}>
+        <div>
+          <Label>Location{req}</Label>
+          <LocationPicker
+            value={block}
+            onPick={(p) =>
+              onChange({
+                ...block,
+                name: p.label,
+                code: p.code,
+                country: p.country,
+                country_name: p.country_name,
+                flag: p.flag,
+                lat: p.lat,
+                lng: p.lng,
+              })
+            }
+          />
+        </div>
+        <div>
+          <Label>Transport modes{req}</Label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {MODES.map((m) => {
+              const on = block.modes.includes(m)
+              return (
+                <span
+                  key={m}
+                  onClick={() => toggleMode(m)}
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: 11,
+                    cursor: 'pointer',
+                    background: on ? 'var(--yellow-tint)' : 'transparent',
+                    border: `1px solid ${on ? 'var(--yellow-border-strong)' : 'var(--border-strong)'}`,
+                    font: '500 12px var(--font-body)',
+                    color: on ? 'var(--agl-yellow)' : 'var(--t-50)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {MODE_GLYPH[m]} {MODE_LABEL[m]}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+        <div>
+          <Label>Flow{req}</Label>
+          <div style={{ display: 'flex', height: 44, borderRadius: 12, border: '1px solid var(--border-strong)', overflow: 'hidden' }}>
+            {FLOWS.map((f, i) => {
+              const on = block.flow === f.value
+              return (
+                <span
+                  key={f.value}
+                  onClick={() => onChange({ ...block, flow: f.value })}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    borderLeft: i ? '1px solid var(--border-strong)' : 'none',
+                    background: on ? 'var(--agl-yellow)' : 'transparent',
+                    color: on ? 'var(--agl-navy)' : 'var(--t-50)',
+                    font: `${on ? 600 : 500} 12px var(--font-body)`,
+                  }}
+                >
+                  {f.label}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function CreateAlert() {
+  const navigate = useNavigate()
+  const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null)
+  const [title, setTitle] = useState('')
+  const [category, setCategory] = useState('')
+  const [subCategory, setSubCategory] = useState('')
+  const [industry, setIndustry] = useState('')
+  const [severity, setSeverity] = useState<Severity>('warning')
+  const [validFrom, setValidFrom] = useState(() => new Date().toISOString().slice(0, 10))
+  const [validTo, setValidTo] = useState('')
+  const [locations, setLocations] = useState<DraftLocation[]>([emptyLocation()])
+  const [impacts, setImpacts] = useState('')
+  const [actionPlan, setActionPlan] = useState('')
+  const [sourceUrl, setSourceUrl] = useState('')
+  const [routing, setRouting] = useState<RoutingInfo | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [showPublish, setShowPublish] = useState(false)
+  const debounce = useRef<number>()
+
+  useEffect(() => {
+    void api.taxonomy().then(setTaxonomy)
+  }, [])
+
+  const completedLocations = useMemo(
+    () => locations.filter((l) => l.country && l.modes.length > 0),
+    [locations],
+  )
+
+  // Rights routing preview — recomputed (debounced) as locations change.
+  useEffect(() => {
+    if (completedLocations.length === 0) {
+      setRouting(null)
+      return
+    }
+    window.clearTimeout(debounce.current)
+    debounce.current = window.setTimeout(() => {
+      void api
+        .routing({
+          title: title || 'draft',
+          category: category || 'Weather',
+          valid_from: validFrom,
+          locations: completedLocations as LocationBlock[],
+        } as never)
+        .then(setRouting)
+        .catch(() => setRouting(null))
+    }, 250)
+  }, [completedLocations, title, category, validFrom])
+
+  const subCategories = category && taxonomy ? taxonomy.categories[category] ?? [] : []
+
+  const mandatoryOk =
+    title && category && subCategory && impacts && actionPlan && completedLocations.length > 0
+
+  function buildPayload() {
+    return {
+      title,
+      category,
+      sub_category: subCategory,
+      industry: industry || null,
+      severity,
+      valid_from: validFrom,
+      valid_to: validTo || null,
+      impacts,
+      action_plan: actionPlan,
+      locations: completedLocations,
+      urls: sourceUrl ? [sourceUrl] : [],
+      clients: [],
+    }
+  }
+
+  async function persistDraft(): Promise<string> {
+    const created = await api.createAlert(buildPayload())
+    return created.id
+  }
+
+  async function handleSaveDraft() {
+    setBusy(true)
+    setError('')
+    try {
+      await persistDraft()
+      navigate('/feed')
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  async function handlePrimary() {
+    if (!mandatoryOk) {
+      setError('Fill all required (*) fields and add at least one location with a mode.')
+      return
+    }
+    if (routing?.action === 'publish') {
+      setShowPublish(true) // opens content-confirm → external dialogs
+      return
+    }
+    // Submit for approval
+    setBusy(true)
+    setError('')
+    try {
+      const id = await persistDraft()
+      await api.submit(id)
+      navigate('/feed')
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  async function handleConfirmPublish(external: ExternalVariant) {
+    setBusy(true)
+    setError('')
+    try {
+      const id = await persistDraft()
+      await api.publish(id, external)
+      navigate('/')
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+      setShowPublish(false)
+    }
+  }
+
+  const primaryLabel = routing?.action === 'publish' ? 'Publish' : 'Submit for approval →'
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
+      <MapBackdrop opacity={0.35} blur={3} overlay="rgba(8,14,26,.55)" />
+
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%,-50%)',
+          width: 920,
+          maxWidth: 'calc(100vw - 48px)',
+          maxHeight: 'calc(100vh - 48px)',
+          borderRadius: 20,
+          background: 'var(--glass-97)',
+          border: '1px solid var(--border-strong)',
+          boxShadow: 'var(--shadow-modal)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          animation: 'swanScaleIn .2s ease-out',
+        }}
+      >
+        {/* header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '20px 28px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 11,
+              background: 'var(--yellow-tint)',
+              border: '1px solid var(--yellow-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--agl-yellow)',
+              font: "600 18px var(--font-display)",
+            }}
+          >
+            +
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ font: '600 17px var(--font-display)', color: '#fff' }}>Create alert</div>
+            <div style={{ font: '400 11.5px var(--font-body)', color: 'var(--t-45)' }}>
+              Template: <span style={{ color: 'var(--agl-yellow)' }}>Seasonal port congestion — draft</span> · or start blank
+            </div>
+          </div>
+          <div onClick={() => navigate(-1)} style={{ font: '400 20px sans-serif', color: 'var(--t-40)', cursor: 'pointer' }}>
+            ✕
+          </div>
+        </div>
+
+        {/* body */}
+        <div className="scroll-y" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div>
+            <Label>Title{req}</Label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Short, specific headline"
+              style={{ ...fieldStyle, height: 46 }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            <div>
+              <Label>Category{req}</Label>
+              <select
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value)
+                  setSubCategory('')
+                }}
+                style={{ ...fieldStyle }}
+              >
+                <option value="">Select…</option>
+                {taxonomy &&
+                  Object.keys(taxonomy.categories).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <Label>Sub-category{req}</Label>
+              <select value={subCategory} onChange={(e) => setSubCategory(e.target.value)} disabled={!category} style={{ ...fieldStyle, opacity: category ? 1 : 0.5 }}>
+                <option value="">Select…</option>
+                {subCategories.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Industry</Label>
+              <select value={industry} onChange={(e) => setIndustry(e.target.value)} style={{ ...fieldStyle }}>
+                {taxonomy?.industries.map((i) => (
+                  <option key={i} value={i === 'All industries' ? '' : i}>
+                    {i}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <Label>Visible on map from{req}</Label>
+              <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} style={{ ...fieldStyle }} />
+            </div>
+            <div>
+              <Label>
+                Until{' '}
+                <span style={{ font: '400 10.5px var(--font-body)', color: 'var(--t-35)' }}>
+                  — leave blank for “until further notice”
+                </span>
+              </Label>
+              <input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} style={{ ...fieldStyle }} />
+            </div>
+          </div>
+
+          {/* Severity — needed for map/severity coding (spec §8.4 bands). */}
+          <div>
+            <Label>Severity{req}</Label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {SEVERITIES.map((s) => {
+                const on = severity === s
+                return (
+                  <span
+                    key={s}
+                    onClick={() => setSeverity(s)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      padding: '8px 14px',
+                      borderRadius: 11,
+                      cursor: 'pointer',
+                      background: on ? 'var(--yellow-tint)' : 'transparent',
+                      border: `1px solid ${on ? 'var(--yellow-border-strong)' : 'var(--border-strong)'}`,
+                      font: '500 12px var(--font-body)',
+                      color: on ? 'var(--agl-yellow)' : 'var(--t-55)',
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: SEVERITY_COLOR[s] }} />
+                    {s}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Locations */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {locations.map((block, i) => (
+              <LocationBlockEditor
+                key={i}
+                index={i}
+                block={block}
+                canRemove={locations.length > 1}
+                onChange={(b) => setLocations((ls) => ls.map((x, j) => (j === i ? b : x)))}
+                onRemove={() => setLocations((ls) => ls.filter((_, j) => j !== i))}
+              />
+            ))}
+            <span
+              onClick={() => setLocations((ls) => [...ls, emptyLocation()])}
+              style={{ font: '500 12px var(--font-body)', color: 'var(--agl-yellow)', cursor: 'pointer', alignSelf: 'flex-start' }}
+            >
+              + Add location
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <Label>Business impact{req}</Label>
+              <textarea
+                value={impacts}
+                onChange={(e) => setImpacts(e.target.value)}
+                placeholder="What this means operationally…"
+                style={{ ...fieldStyle, height: 84, padding: '12px 14px', resize: 'none', lineHeight: 1.55 }}
+              />
+            </div>
+            <div>
+              <Label>Global reactive action plan{req}</Label>
+              <textarea
+                value={actionPlan}
+                onChange={(e) => setActionPlan(e.target.value)}
+                placeholder="What the network should do…"
+                style={{ ...fieldStyle, height: 84, padding: '12px 14px', resize: 'none', lineHeight: 1.55 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                flex: 1,
+                height: 52,
+                borderRadius: 12,
+                border: '1.5px dashed rgba(255,255,255,.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                font: '400 12px var(--font-body)',
+                color: 'var(--t-45)',
+              }}
+            >
+              ⤒ Drop picture or attachments — PDF, images, docs
+            </div>
+            <input
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              placeholder="🔗 Add source URL"
+              style={{ ...fieldStyle, width: 240, height: 52, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-mid)' }}
+            />
+          </div>
+        </div>
+
+        {/* footer */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '18px 28px',
+            borderTop: '1px solid rgba(255,255,255,.08)',
+            background: 'rgba(10,18,32,.5)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ font: '400 11.5px var(--font-body)', color: 'var(--t-40)', flex: 1, minWidth: 220 }}>
+            {error ? (
+              <span style={{ color: 'var(--sev-critical-text)' }}>{error}</span>
+            ) : routing && routing.uncovered.length > 0 ? (
+              <>
+                You don't hold publication rights for{' '}
+                <b style={{ color: 'var(--t-75)' }}>{routing.uncovered.join(', ')}</b> — this alert
+                will be routed for approval.
+              </>
+            ) : routing?.can_publish ? (
+              <>You hold publication rights for all selected locations — you can publish directly.</>
+            ) : (
+              <>Add a location with a transport mode to see the publication route.</>
+            )}
+          </span>
+          <Button variant="ghost" onClick={() => navigate(-1)}>
+            Cancel
+          </Button>
+          <Button variant="outline" onClick={handleSaveDraft} disabled={busy || !title}>
+            Save draft
+          </Button>
+          <Button variant="primary" onClick={handlePrimary} disabled={busy || !mandatoryOk} style={{ padding: '0 24px' }}>
+            {primaryLabel}
+          </Button>
+        </div>
+      </div>
+
+      {showPublish && (
+        <PublishDialogs
+          onCancel={() => setShowPublish(false)}
+          onConfirm={handleConfirmPublish}
+          busy={busy}
+        />
+      )}
+    </div>
+  )
+}

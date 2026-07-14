@@ -1,0 +1,165 @@
+// Mirrors server/app/schemas.py — the API contract.
+
+export type Severity = 'info' | 'watch' | 'warning' | 'critical'
+export type AlertStatus =
+  | 'draft'
+  | 'submitted'
+  | 'published'
+  | 'rejected'
+  | 'closed'
+  | 'expired'
+export type TransportMode = 'sea' | 'road' | 'air' | 'rail' | 'warehouse'
+export type Flow = 'import' | 'export' | 'both'
+
+export interface LocationBlock {
+  name: string
+  code: string
+  country: string
+  country_name: string
+  flag: string
+  lat: number
+  lng: number
+  modes: TransportMode[]
+  flow: Flow
+}
+
+export interface AlertAuthor {
+  id: string
+  name: string
+  initials: string
+  branch: string
+}
+
+export interface Alert {
+  id: string
+  title: string
+  description: string
+  picture_url: string | null
+  category: string
+  sub_category: string
+  industry: string | null
+  severity: Severity
+  status: AlertStatus
+  origin: string
+  visibility: string
+  valid_from: string
+  valid_to: string | null
+  valid_to_label: string
+  impacts: string
+  action_plan: string
+  locations: LocationBlock[]
+  urls: string[]
+  attachments: unknown[]
+  clients: string[]
+  external_variant: { mode: string; title?: string; description?: string } | null
+  rejection_comment: string | null
+  author: AlertAuthor
+  created_at: string
+  updated_at: string
+  submitted_at: string | null
+  published_at: string | null
+  closed_at: string | null
+}
+
+export interface RightsSummary {
+  can_create: boolean
+  is_rights_manager: boolean
+  internal_countries: string[]
+  external_countries: string[]
+  client_scope: string[]
+  profiles: string[]
+  perimeter_label: string
+}
+
+export interface PerimeterRow {
+  country: string
+  country_name: string
+  flag: string
+  source: string
+  internal: boolean
+  external: boolean
+}
+
+export interface NotificationRules {
+  published: boolean
+  published_area: string
+  submitted: boolean
+  submitted_area: string
+}
+
+export interface UserStats {
+  created: number
+  published: number
+  last_alert: string | null
+}
+
+export interface UserPublic {
+  id: string
+  email: string
+  name: string
+  initials: string
+  job_title: string
+  branch: string
+  role_label: string
+  home_country: string
+  home_country_name: string
+  phone: string
+  locale: string
+  timezone: string
+  avatar_gold: boolean
+}
+
+export interface UserMe extends UserPublic {
+  rights: RightsSummary
+  notifications: NotificationRules
+  perimeter: PerimeterRow[]
+  stats: UserStats
+}
+
+export interface DashboardStats {
+  active_alerts: number
+  severity: { info: number; watch: number; warning: number; critical: number }
+  awaiting_your_approval: number
+  countries_affected: number
+  updated_at: string
+}
+
+export interface RoutingInfo {
+  countries: string[]
+  covered: string[]
+  uncovered: string[]
+  action: 'publish' | 'submit'
+  can_publish: boolean
+}
+
+export interface Place {
+  name: string
+  code: string
+  country: string
+  country_name: string
+  flag: string
+  lat: number
+  lng: number
+  label: string
+}
+
+export interface Taxonomy {
+  categories: Record<string, string[]>
+  industries: string[]
+  modes: TransportMode[]
+  flows: Flow[]
+  severities: Severity[]
+  profiles: string[]
+}
+
+export interface ApprovalQueue {
+  perimeter_label: string
+  pending: number
+  alerts: Alert[]
+}
+
+export interface ExternalVariant {
+  mode: 'identical' | 'modified' | 'none'
+  title?: string
+  description?: string
+}
