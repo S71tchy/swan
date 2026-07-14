@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
+import type { UserMe } from '../types'
 import { Avatar } from './Avatar'
 import { Logo, Wordmark } from './Logo'
 import { PlusIcon, SearchIcon } from './icons'
@@ -8,6 +10,95 @@ interface TopBarProps {
   breadcrumb?: string
   showSearch?: boolean
   showCreate?: boolean
+}
+
+// Avatar with a small dropdown: My profile / Sign out.
+function AvatarMenu({ user }: { user: UserMe }) {
+  const navigate = useNavigate()
+  const { logout } = useAuth()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  async function signOut() {
+    setOpen(false)
+    await logout()
+    navigate('/login', { replace: true })
+  }
+
+  const item: React.CSSProperties = {
+    padding: '10px 14px',
+    font: '500 12.5px var(--font-body)',
+    color: 'var(--t-80)',
+    cursor: 'pointer',
+    textAlign: 'left',
+    background: 'transparent',
+    border: 'none',
+    width: '100%',
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <Avatar
+        initials={user.initials}
+        gold={user.avatar_gold}
+        onClick={() => setOpen((o) => !o)}
+        title={user.name}
+      />
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 48,
+            right: 0,
+            minWidth: 190,
+            borderRadius: 12,
+            background: 'var(--glass-97)',
+            border: '1px solid var(--border-strong)',
+            backdropFilter: 'blur(18px)',
+            boxShadow: 'var(--shadow-panel)',
+            overflow: 'hidden',
+            zIndex: 40,
+            animation: 'swanFadeIn .12s ease',
+          }}
+        >
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+            <div style={{ font: '600 12.5px var(--font-body)', color: '#fff' }}>{user.name}</div>
+            <div style={{ font: '400 10.5px var(--font-body)', color: 'var(--t-45)' }}>
+              {user.role_label}
+            </div>
+          </div>
+          <button
+            style={item}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.06)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            onClick={() => {
+              setOpen(false)
+              navigate('/profile')
+            }}
+          >
+            My profile
+          </button>
+          <button
+            style={item}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.06)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            onClick={signOut}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function TopBar({ breadcrumb, showSearch = false, showCreate = true }: TopBarProps) {
@@ -84,14 +175,7 @@ export function TopBar({ breadcrumb, showSearch = false, showCreate = true }: To
         </button>
       )}
 
-      {user && (
-        <Avatar
-          initials={user.initials}
-          gold={user.avatar_gold}
-          onClick={() => navigate('/profile')}
-          title={user.name}
-        />
-      )}
+      {user && <AvatarMenu user={user} />}
     </div>
   )
 }
