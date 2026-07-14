@@ -2,7 +2,7 @@
 
 AGL's internal disruption-awareness platform. This repo implements **Phase 1**: the
 core alert platform — login → live world map → live feed → alert creation →
-approval/publication → profile — built to the approved "Ops Deck" design.
+approval/publication → profile — built to the approved "Ops Deck" design for now.
 
 - **Frontend**: React + Vite + TypeScript, MapLibre GL (no map token needed).
 - **Backend**: Python + FastAPI + SQLAlchemy (+ Pydantic).

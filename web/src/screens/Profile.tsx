@@ -1,10 +1,11 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { TopBar } from '../components/TopBar'
 import { LeftRail } from '../components/LeftRail'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { Avatar } from '../components/Avatar'
-import { SectionLabel } from '../components/ui'
+import { Button, SectionLabel } from '../components/ui'
 import { api } from '../api'
 import { fmtAgo } from '../lib/format'
 import type { NotificationRules } from '../types'
@@ -71,7 +72,8 @@ const rightsDot = (color: string) => (
 )
 
 export default function Profile() {
-  const { user, refresh } = useAuth()
+  const { user, refresh, logout } = useAuth()
+  const navigate = useNavigate()
   const [notif, setNotif] = useState<NotificationRules | null>(user?.notifications ?? null)
 
   if (!user) return null
@@ -81,6 +83,11 @@ export default function Profile() {
     setNotif(next)
     await api.updateNotifications(next)
     await refresh()
+  }
+
+  async function handleSignOut() {
+    await logout()
+    navigate('/login', { replace: true })
   }
 
   const r = user.rights
@@ -157,6 +164,13 @@ export default function Profile() {
                 </div>
               ))}
             </div>
+            <Button
+              variant="outline"
+              onClick={handleSignOut}
+              style={{ width: '100%', marginTop: 18 }}
+            >
+              Sign out
+            </Button>
           </Card>
 
           <Card style={{ padding: '20px 24px' }}>
