@@ -20,3 +20,9 @@ web/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Claude Files
+.claude
+CLAUDE.md
+swan_spec_v2.md
+design_handoff
