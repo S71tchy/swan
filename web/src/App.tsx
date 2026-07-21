@@ -69,6 +69,14 @@ export default function App() {
         }
       />
       <Route
+        path="/create/:id"
+        element={
+          <RequireAuth>
+            <CreateAlert />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/approvals"
         element={
           <RequireAuth>

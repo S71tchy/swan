@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -31,6 +31,26 @@ class Profile(Base):
     name: Mapped[str] = mapped_column(String, primary_key=True)  # e.g. WEST-AFRICA
     countries: Mapped[list] = mapped_column(JSON, default=list)  # ISO2 codes
     embeds_rights_manager: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Place(Base):
+    """Location master data (gazetteer). Phase 1 seeds a curated set of ports,
+    cities and borders; a Rights Manager can add/edit entries, and the create
+    form can add an ad-hoc place inline. In Phase 2 the `/meta/places` lookup is
+    swapped for a real geocoder — this table becomes its local cache/overrides.
+
+    `code` is a UN/LOCODE-ish canonical id used to cluster alerts on the map, so
+    two alerts on the same port stack into one marker."""
+
+    __tablename__ = "places"
+
+    code: Mapped[str] = mapped_column(String, primary_key=True)  # e.g. NGAPP
+    name: Mapped[str] = mapped_column(String, index=True)
+    country: Mapped[str] = mapped_column(String(2), index=True)  # ISO2
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    aliases: Mapped[list] = mapped_column(JSON, default=list)  # alternate search terms
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class User(Base):

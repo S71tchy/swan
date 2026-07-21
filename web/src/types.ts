@@ -229,3 +229,24 @@ export interface ProfileInput {
   countries?: string[]
   embeds_rights_manager?: boolean
 }
+
+export interface PlaceRow {
+  code: string
+  name: string
+  country: string
+  country_name: string
+  flag: string
+  lat: number
+  lng: number
+  aliases: string[]
+  usage: number
+}
+
+export interface PlaceInput {
+  code: string
+  name: string
+  country: string
+  lat: number
+  lng: number
+  aliases?: string[]
+}

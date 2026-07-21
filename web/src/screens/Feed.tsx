@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { TopBar } from '../components/TopBar'
@@ -8,14 +9,43 @@ import { AlertDetailPanel } from '../components/AlertDetailPanel'
 import {
   SEVERITY_COLOR,
   SEVERITY_TEXT,
+  fmtAgo,
   fmtFeedTime,
   dayGroup,
   modesLabel,
 } from '../lib/format'
-import type { Alert, Severity } from '../types'
+import type { Alert, AlertStatus, Severity } from '../types'
 
 const DAY_ORDER = ['Today', 'Yesterday', 'Earlier this week', 'Earlier']
 const SEVERITIES: Severity[] = ['critical', 'warning', 'watch', 'info']
+
+const STATUS_STYLE: Record<AlertStatus, { label: string; color: string; navy?: boolean }> = {
+  draft: { label: 'Draft', color: 'var(--agl-grey)', navy: true },
+  submitted: { label: 'Submitted', color: 'var(--sev-watch)', navy: true },
+  published: { label: 'Published', color: 'var(--agl-turquoise)', navy: true },
+  rejected: { label: 'Rejected', color: 'var(--sev-critical)' },
+  closed: { label: 'Closed', color: 'rgba(255,255,255,.25)' },
+  expired: { label: 'Expired', color: 'rgba(255,255,255,.25)' },
+}
+
+function StatusBadge({ status }: { status: AlertStatus }) {
+  const s = STATUS_STYLE[status] ?? STATUS_STYLE.draft
+  return (
+    <span
+      style={{
+        padding: '3px 9px',
+        borderRadius: 6,
+        background: s.color,
+        font: '700 9.5px var(--font-display)',
+        color: s.navy ? 'var(--agl-navy)' : '#fff',
+        letterSpacing: '.8px',
+        textTransform: 'uppercase',
+      }}
+    >
+      {s.label}
+    </span>
+  )
+}
 
 function FeedCard({ alert, onClick }: { alert: Alert; onClick: () => void }) {
   const [hover, setHover] = useState(false)
@@ -85,6 +115,65 @@ function FeedCard({ alert, onClick }: { alert: Alert; onClick: () => void }) {
   )
 }
 
+function MineList({
+  alerts,
+  onEdit,
+  onView,
+}: {
+  alerts: Alert[]
+  onEdit: (a: Alert) => void
+  onView: (a: Alert) => void
+}) {
+  const sorted = [...alerts].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  return (
+    <div className="scroll-y" style={{ flex: 1, padding: '18px 26px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {sorted.length === 0 && (
+        <div style={{ color: 'var(--t-45)', font: '400 13px var(--font-body)', textAlign: 'center', marginTop: 40 }}>
+          You haven't created any alerts yet. Use <span style={{ color: 'var(--agl-yellow)' }}>Create alert</span> to start one.
+        </div>
+      )}
+      {sorted.map((a) => {
+        const editable = a.status === 'draft' || a.status === 'rejected'
+        const loc = a.locations[0]
+        return (
+          <div
+            key={a.id}
+            onClick={() => (editable ? onEdit(a) : onView(a))}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              borderRadius: 12,
+              background: 'rgba(255,255,255,.035)',
+              border: '1px solid rgba(255,255,255,.08)',
+              borderLeft: `3px solid ${SEVERITY_COLOR[a.severity]}`,
+              padding: '13px 16px',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.06)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.035)')}
+          >
+            <StatusBadge status={a.status} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ font: '600 13.5px var(--font-display)', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {a.title || '(untitled draft)'}
+              </div>
+              <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)', marginTop: 3 }}>
+                {a.category}
+                {loc ? ` · ${loc.flag} ${loc.name.split(' — ')[0]}` : ''} · updated {fmtAgo(a.updated_at)}
+                {a.status === 'rejected' && a.rejection_comment ? ` · “${a.rejection_comment}”` : ''}
+              </div>
+            </div>
+            <span style={{ font: '500 11.5px var(--font-body)', color: editable ? 'var(--agl-yellow)' : 'var(--t-45)', whiteSpace: 'nowrap' }}>
+              {editable ? 'Continue →' : 'View'}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function ScopeChip({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
   return (
     <span
@@ -104,22 +193,28 @@ function ScopeChip({ active, children, onClick }: { active: boolean; children: R
   )
 }
 
+type Scope = 'all' | 'perimeter' | 'mine'
+
 export default function Feed() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [alerts, setAlerts] = useState<Alert[]>([])
-  const [scope, setScope] = useState<'all' | 'mine'>('all')
+  const [scope, setScope] = useState<Scope>('all')
   const [sevFilter, setSevFilter] = useState<Set<Severity>>(new Set())
   const [selected, setSelected] = useState<Alert | null>(null)
 
+  // 'mine' pulls the caller's own alerts across every status; the others read
+  // the published feed and filter client-side.
   useEffect(() => {
-    void api.feed('published').then(setAlerts).catch(() => setAlerts([]))
-  }, [])
+    const source = scope === 'mine' ? 'mine' : 'published'
+    void api.feed(source).then(setAlerts).catch(() => setAlerts([]))
+  }, [scope])
 
   const perimeter = user?.rights.internal_countries ?? []
 
   const visible = useMemo(() => {
     return alerts.filter((a) => {
-      if (scope === 'mine' && !a.locations.some((l) => perimeter.includes(l.country))) return false
+      if (scope === 'perimeter' && !a.locations.some((l) => perimeter.includes(l.country))) return false
       if (sevFilter.size && !sevFilter.has(a.severity)) return false
       return true
     })
@@ -206,8 +301,11 @@ export default function Feed() {
             <ScopeChip active={scope === 'all'} onClick={() => setScope('all')}>
               All alerts
             </ScopeChip>
-            <ScopeChip active={scope === 'mine'} onClick={() => setScope('mine')}>
+            <ScopeChip active={scope === 'perimeter'} onClick={() => setScope('perimeter')}>
               My perimeter
+            </ScopeChip>
+            <ScopeChip active={scope === 'mine'} onClick={() => setScope('mine')}>
+              My alerts
             </ScopeChip>
           </div>
           <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,.1)' }} />
@@ -237,32 +335,36 @@ export default function Feed() {
         </div>
 
         {/* body */}
-        <div className="scroll-y" style={{ flex: 1, padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {groups.length === 0 && (
-            <div style={{ color: 'var(--t-45)', font: '400 13px var(--font-body)', textAlign: 'center', marginTop: 40 }}>
-              No alerts match these filters.
-            </div>
-          )}
-          {groups.map(([group, groupAlerts]) => (
-            <div key={group} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div
-                style={{
-                  font: '600 10.5px var(--font-display)',
-                  color: 'var(--t-40)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '1.5px',
-                }}
-              >
-                {group}
+        {scope === 'mine' ? (
+          <MineList alerts={visible} onEdit={(a) => navigate(`/create/${a.id}`)} onView={(a) => setSelected(a)} />
+        ) : (
+          <div className="scroll-y" style={{ flex: 1, padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {groups.length === 0 && (
+              <div style={{ color: 'var(--t-45)', font: '400 13px var(--font-body)', textAlign: 'center', marginTop: 40 }}>
+                No alerts match these filters.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {groupAlerts.map((a) => (
-                  <FeedCard key={a.id} alert={a} onClick={() => setSelected(a)} />
-                ))}
+            )}
+            {groups.map(([group, groupAlerts]) => (
+              <div key={group} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div
+                  style={{
+                    font: '600 10.5px var(--font-display)',
+                    color: 'var(--t-40)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1.5px',
+                  }}
+                >
+                  {group}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {groupAlerts.map((a) => (
+                    <FeedCard key={a.id} alert={a} onClick={() => setSelected(a)} />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {selected && <AlertDetailPanel alert={selected} onClose={() => setSelected(null)} />}

@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.database import Base, SessionLocal, engine
-from app.models import Alert, AuditLog, Profile, User
+from app.models import Alert, AuditLog, Place, Profile, User
 from app.reference import PLACES, STANDARD_PROFILES, country_meta
 
 NOW = datetime.now(timezone.utc)
@@ -40,6 +40,22 @@ def reset(db) -> None:
     db.query(Alert).delete()
     db.query(User).delete()
     db.query(Profile).delete()
+    db.query(Place).delete()
+    db.commit()
+
+
+def seed_places(db) -> None:
+    for p in PLACES:
+        db.add(
+            Place(
+                code=p["code"],
+                name=p["name"],
+                country=p["country"],
+                lat=p["lat"],
+                lng=p["lng"],
+                aliases=p.get("aliases", []),
+            )
+        )
     db.commit()
 
 
@@ -331,10 +347,12 @@ def main() -> None:
     db = SessionLocal()
     try:
         reset(db)
+        seed_places(db)
         seed_profiles(db)
         users = seed_users(db)
         seed_alerts(db, users)
         counts = {
+            "places": db.query(Place).count(),
             "profiles": db.query(Profile).count(),
             "users": db.query(User).count(),
             "alerts": db.query(Alert).count(),

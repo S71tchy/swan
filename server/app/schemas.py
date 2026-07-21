@@ -298,3 +298,35 @@ class AdminUserUpdate(BaseModel):
     external_pub_countries: list[str] | None = None
     client_scope: list[str] | None = None
     profiles: list[str] | None = None
+
+
+# --------------------------------------------------------------------------- #
+# Location master (gazetteer)
+# --------------------------------------------------------------------------- #
+class PlaceRow(BaseModel):
+    code: str
+    name: str
+    country: str
+    country_name: str
+    flag: str
+    lat: float
+    lng: float
+    aliases: list[str]
+    usage: int          # how many alerts reference this place code
+
+
+class PlaceCreate(BaseModel):
+    code: str
+    name: str
+    country: str
+    lat: float
+    lng: float
+    aliases: list[str] = Field(default_factory=list)
+
+
+class PlaceUpdate(BaseModel):
+    name: str | None = None
+    country: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    aliases: list[str] | None = None

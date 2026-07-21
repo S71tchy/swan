@@ -8,7 +8,8 @@ import { MapBackdrop } from '../components/MapBackdrop'
 import { Avatar } from '../components/Avatar'
 import { Button, SectionLabel } from '../components/ui'
 import { PlusIcon } from '../components/icons'
-import type { AdminUserRow, CountryRef, ProfileRow } from '../types'
+import { LocationPinPicker } from '../components/LocationPinPicker'
+import type { AdminUserRow, CountryRef, PlaceRow, ProfileRow } from '../types'
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -593,9 +594,131 @@ function ProfileEditor({
 }
 
 // --------------------------------------------------------------------------- //
+// Place editor drawer
+// --------------------------------------------------------------------------- //
+type PlaceForm = { code: string; name: string; country: string; lat: number | null; lng: number | null; aliases: string }
+
+function PlaceEditor({
+  initial,
+  isNew,
+  countries,
+  usage,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  initial: PlaceForm
+  isNew: boolean
+  countries: CountryRef[]
+  usage: number
+  onClose: () => void
+  onSaved: (payload: PlaceForm) => Promise<void>
+  onDeleted?: () => Promise<void>
+}) {
+  const [form, setForm] = useState<PlaceForm>(initial)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const ready = form.code.trim() && form.name.trim() && form.country && form.lat != null && form.lng != null
+
+  async function save() {
+    setError(null)
+    if (!ready) {
+      setError('Code, name, country and a map pin are all required.')
+      return
+    }
+    setBusy(true)
+    try {
+      await onSaved(form)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not save.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    if (!onDeleted) return
+    setError(null)
+    setBusy(true)
+    try {
+      await onDeleted()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not delete.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Drawer onClose={onClose}>
+      <div style={{ padding: '26px 26px 30px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div>
+          <div style={{ font: '600 17px var(--font-display)', color: '#fff' }}>{isNew ? 'New location' : form.name}</div>
+          <div style={{ font: '400 11.5px var(--font-body)', color: 'var(--t-45)' }}>
+            {isNew ? 'Add a place to the master gazetteer' : `Referenced by ${usage} alert${usage === 1 ? '' : 's'}`}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Code (LOCODE-ish)">
+            <input
+              style={{ ...inputStyle, textTransform: 'uppercase', opacity: isNew ? 1 : 0.6 }}
+              value={form.code}
+              disabled={!isNew}
+              onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+            />
+          </Field>
+          <Field label="Country">
+            <select
+              style={{ ...inputStyle, appearance: 'none' }}
+              value={form.country}
+              onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
+            >
+              <option value="">Select…</option>
+              {countries.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name} ({c.code})
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="Name">
+          <input style={inputStyle} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        </Field>
+        <Field label="Aliases (comma-separated, for search)">
+          <input style={inputStyle} value={form.aliases} onChange={(e) => setForm((f) => ({ ...f, aliases: e.target.value }))} />
+        </Field>
+        <div>
+          <div style={{ font: '500 11px var(--font-body)', color: 'var(--t-55)', marginBottom: 6 }}>Coordinates</div>
+          <LocationPinPicker lat={form.lat} lng={form.lng} onChange={(la, ln) => setForm((f) => ({ ...f, lat: la, lng: ln }))} height={210} />
+        </div>
+
+        {error && (
+          <div style={{ borderRadius: 10, border: '1px solid rgba(207,69,39,.5)', background: 'rgba(207,69,39,.12)', padding: '10px 12px', font: '400 12px var(--font-body)', color: 'var(--sev-critical-text)' }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4 }}>
+          <Button variant="primary" disabled={busy} onClick={save}>
+            {isNew ? 'Create location' : 'Save changes'}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          {!isNew && onDeleted && (
+            <Button variant="danger" disabled={busy} onClick={remove} style={{ marginLeft: 'auto' }}>Delete</Button>
+          )}
+        </div>
+      </div>
+    </Drawer>
+  )
+}
+
+// --------------------------------------------------------------------------- //
 // Screen
 // --------------------------------------------------------------------------- //
-type Tab = 'users' | 'profiles'
+type Tab = 'users' | 'profiles' | 'places'
+const TAB_LABEL: Record<Tab, string> = { users: 'Users', profiles: 'Profiles', places: 'Locations' }
 
 export default function RightsAdmin() {
   const { user, refresh } = useAuth()
@@ -604,11 +727,13 @@ export default function RightsAdmin() {
   const [countries, setCountries] = useState<CountryRef[]>([])
   const [users, setUsers] = useState<AdminUserRow[]>([])
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
+  const [places, setPlaces] = useState<PlaceRow[]>([])
   const [editUser, setEditUser] = useState<{ form: UserForm; id?: string } | null>(null)
   const [editProfile, setEditProfile] = useState<{
     data: { name: string; countries: string[]; embeds_rights_manager: boolean }
     isNew: boolean
   } | null>(null)
+  const [editPlace, setEditPlace] = useState<{ form: PlaceForm; isNew: boolean; usage: number } | null>(null)
 
   const flagOf = useMemo(() => {
     const m: Record<string, string> = {}
@@ -619,9 +744,10 @@ export default function RightsAdmin() {
   const isManager = user?.rights.is_rights_manager
 
   async function reload() {
-    const [u, p] = await Promise.all([api.adminUsers(), api.adminProfiles()])
+    const [u, p, pl] = await Promise.all([api.adminUsers(), api.adminProfiles(), api.adminPlaces()])
     setUsers(u)
     setProfiles(p)
+    setPlaces(pl)
   }
 
   useEffect(() => {
@@ -701,6 +827,23 @@ export default function RightsAdmin() {
     await refresh()
   }
 
+  // --- place save/delete ---
+  async function savePlace(form: PlaceForm, isNew: boolean) {
+    const aliases = form.aliases.split(',').map((a) => a.trim()).filter(Boolean)
+    if (isNew) {
+      await api.adminCreatePlace({ code: form.code, name: form.name, country: form.country, lat: form.lat as number, lng: form.lng as number, aliases })
+    } else {
+      await api.adminUpdatePlace(form.code, { name: form.name, country: form.country, lat: form.lat as number, lng: form.lng as number, aliases })
+    }
+    setEditPlace(null)
+    await reload()
+  }
+  async function deletePlace(code: string) {
+    await api.adminDeletePlace(code)
+    setEditPlace(null)
+    await reload()
+  }
+
   const reachLabel = (codes: string[]) =>
     codes.length === 0 ? '—' : codes.map((c) => `${flagOf[c] ?? ''}${c}`).join(' ')
 
@@ -741,7 +884,7 @@ export default function RightsAdmin() {
               border: '1px solid var(--border-soft)',
             }}
           >
-            {(['users', 'profiles'] as Tab[]).map((t) => (
+            {(['users', 'profiles', 'places'] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -750,26 +893,25 @@ export default function RightsAdmin() {
                   borderRadius: 9,
                   border: 'none',
                   cursor: 'pointer',
-                  textTransform: 'capitalize',
                   font: '600 12.5px var(--font-display)',
                   background: tab === t ? 'var(--agl-yellow)' : 'transparent',
                   color: tab === t ? 'var(--agl-navy)' : 'var(--t-60)',
                 }}
               >
-                {t} {t === 'users' ? `· ${users.length}` : `· ${profiles.length}`}
+                {TAB_LABEL[t]} · {t === 'users' ? users.length : t === 'profiles' ? profiles.length : places.length}
               </button>
             ))}
           </div>
           <Button
             variant="primary"
-            onClick={() =>
-              tab === 'users'
-                ? setEditUser({ form: emptyUser() })
-                : setEditProfile({ data: { name: '', countries: [], embeds_rights_manager: false }, isNew: true })
-            }
+            onClick={() => {
+              if (tab === 'users') setEditUser({ form: emptyUser() })
+              else if (tab === 'profiles') setEditProfile({ data: { name: '', countries: [], embeds_rights_manager: false }, isNew: true })
+              else setEditPlace({ form: { code: '', name: '', country: '', lat: null, lng: null, aliases: '' }, isNew: true, usage: 0 })
+            }}
           >
             <PlusIcon size={13} stroke="var(--agl-navy)" />
-            {tab === 'users' ? 'New user' : 'New profile'}
+            {tab === 'users' ? 'New user' : tab === 'profiles' ? 'New profile' : 'New location'}
           </Button>
         </div>
 
@@ -858,7 +1000,7 @@ export default function RightsAdmin() {
               New users can sign in immediately from the login screen's identity switcher — useful for testing routing.
             </div>
           </div>
-        ) : (
+        ) : tab === 'profiles' ? (
           <div className="scroll-y" style={{ flex: 1, overflowY: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
               {profiles.map((p) => (
@@ -922,6 +1064,68 @@ export default function RightsAdmin() {
               ))}
             </div>
           </div>
+        ) : (
+          <div
+            className="scroll-y"
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              borderRadius: 18,
+              background: 'var(--glass-90)',
+              border: '1px solid var(--border-mid)',
+              backdropFilter: 'blur(18px)',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 2fr 1.4fr 1.4fr .8fr',
+                gap: 12,
+                padding: '14px 22px',
+                position: 'sticky',
+                top: 0,
+                background: 'rgba(15,27,46,.9)',
+                backdropFilter: 'blur(10px)',
+                borderBottom: '1px solid rgba(255,255,255,.08)',
+                font: '600 10px var(--font-display)',
+                color: 'var(--t-45)',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                zIndex: 1,
+              }}
+            >
+              <span>Code</span>
+              <span>Name</span>
+              <span>Country</span>
+              <span>Coordinates</span>
+              <span>Alerts</span>
+            </div>
+            {places.map((p) => (
+              <div
+                key={p.code}
+                onClick={() => setEditPlace({ form: { code: p.code, name: p.name, country: p.country, lat: p.lat, lng: p.lng, aliases: p.aliases.join(', ') }, isNew: false, usage: p.usage })}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 2fr 1.4fr 1.4fr .8fr',
+                  gap: 12,
+                  padding: '13px 22px',
+                  borderBottom: '1px solid rgba(255,255,255,.055)',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  font: '400 12.5px var(--font-body)',
+                  color: 'var(--t-80)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.03)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ font: '600 11.5px var(--font-display)', color: 'var(--agl-yellow)' }}>{p.code}</span>
+                <span style={{ color: '#fff' }}>{p.name}</span>
+                <span style={{ color: 'var(--t-65)' }}>{p.flag} {p.country_name}</span>
+                <span style={{ color: 'var(--t-55)', font: '400 11.5px var(--font-body)' }}>{p.lat.toFixed(2)}, {p.lng.toFixed(2)}</span>
+                <span style={{ color: p.usage ? 'var(--t-70)' : 'var(--t-40)' }}>{p.usage || '—'}</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -947,6 +1151,18 @@ export default function RightsAdmin() {
           onClose={() => setEditProfile(null)}
           onSaved={(payload) => saveProfile(payload, editProfile.isNew)}
           onDeleted={!editProfile.isNew ? () => deleteProfile(editProfile.data.name) : undefined}
+        />
+      )}
+
+      {editPlace && (
+        <PlaceEditor
+          initial={editPlace.form}
+          isNew={editPlace.isNew}
+          countries={countries}
+          usage={editPlace.usage}
+          onClose={() => setEditPlace(null)}
+          onSaved={(form) => savePlace(form, editPlace.isNew)}
+          onDeleted={!editPlace.isNew ? () => deletePlace(editPlace.form.code) : undefined}
         />
       )}
     </div>

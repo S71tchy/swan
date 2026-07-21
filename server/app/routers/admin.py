@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app import audit, schemas
 from app.database import get_db
 from app.deps import require_rights_manager
-from app.models import Alert, Profile, User
+from app.models import Alert, Place, Profile, User
 from app.reference import COUNTRY_CATALOGUE, country_meta
 from app.rights import (
     effective_external_countries,
@@ -404,4 +404,133 @@ def delete_profile(
         detail={"countries": list(profile.countries or [])},
     )
     db.delete(profile)
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Location master (places)
+# --------------------------------------------------------------------------- #
+def _validate_country(code: str) -> str:
+    c = (code or "").strip().upper()
+    if c not in COUNTRY_CATALOGUE:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown country code: {c or '(blank)'}")
+    return c
+
+
+def _validate_coords(lat: float, lng: float) -> None:
+    if not (-90 <= lat <= 90):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Latitude must be between -90 and 90")
+    if not (-180 <= lng <= 180):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Longitude must be between -180 and 180")
+
+
+def _place_usage(all_alerts: list[Alert]) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for a in all_alerts:
+        for loc in a.locations or []:
+            code = loc.get("code")
+            if code:
+                usage[code] = usage.get(code, 0) + 1
+    return usage
+
+
+def _place_row(p: Place, usage: dict[str, int]) -> schemas.PlaceRow:
+    meta = country_meta(p.country)
+    return schemas.PlaceRow(
+        code=p.code,
+        name=p.name,
+        country=p.country,
+        country_name=meta["name"],
+        flag=meta["flag"],
+        lat=p.lat,
+        lng=p.lng,
+        aliases=list(p.aliases or []),
+        usage=usage.get(p.code, 0),
+    )
+
+
+@router.get("/places", response_model=list[schemas.PlaceRow])
+def list_places(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
+    places = db.query(Place).order_by(Place.country, Place.name).all()
+    usage = _place_usage(db.query(Alert).all())
+    return [_place_row(p, usage) for p in places]
+
+
+@router.post("/places", response_model=schemas.PlaceRow, status_code=status.HTTP_201_CREATED)
+def create_place(
+    body: schemas.PlaceCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    code = (body.code or "").strip().upper()
+    if not code:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A location code is required")
+    if db.get(Place, code):
+        raise HTTPException(status.HTTP_409_CONFLICT, "A place with that code already exists")
+    country = _validate_country(body.country)
+    _validate_coords(body.lat, body.lng)
+    place = Place(
+        code=code,
+        name=body.name.strip(),
+        country=country,
+        lat=body.lat,
+        lng=body.lng,
+        aliases=[a.strip() for a in (body.aliases or []) if a.strip()],
+    )
+    db.add(place)
+    db.flush()
+    audit.record(
+        db, actor, "place.created", code, target_type="place",
+        detail={"name": place.name, "country": country, "lat": place.lat, "lng": place.lng},
+    )
+    db.commit()
+    return _place_row(place, _place_usage(db.query(Alert).all()))
+
+
+@router.patch("/places/{code}", response_model=schemas.PlaceRow)
+def update_place(
+    code: str,
+    body: schemas.PlaceUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    place = db.get(Place, code.strip().upper())
+    if not place:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Place not found")
+    updates = body.model_dump(exclude_unset=True)
+    if "name" in updates and updates["name"] is not None:
+        place.name = updates["name"].strip()
+    if "country" in updates and updates["country"] is not None:
+        place.country = _validate_country(updates["country"])
+    lat = updates.get("lat", place.lat)
+    lng = updates.get("lng", place.lng)
+    if "lat" in updates or "lng" in updates:
+        _validate_coords(lat, lng)
+        place.lat = lat
+        place.lng = lng
+    if "aliases" in updates and updates["aliases"] is not None:
+        place.aliases = [a.strip() for a in updates["aliases"] if a.strip()]
+    audit.record(db, actor, "place.updated", place.code, target_type="place", detail={"fields": list(updates)})
+    db.commit()
+    return _place_row(place, _place_usage(db.query(Alert).all()))
+
+
+@router.delete("/places/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_place(
+    code: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    place = db.get(Place, code.strip().upper())
+    if not place:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Place not found")
+    usage = _place_usage(db.query(Alert).all()).get(place.code, 0)
+    if usage:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{usage} alert(s) reference this place; it stays on those alerts. "
+            "Remove it from the master only if it was added in error.",
+        )
+    audit.record(db, actor, "place.deleted", place.code, target_type="place", detail={"name": place.name})
+    db.delete(place)
     db.commit()

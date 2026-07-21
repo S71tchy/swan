@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../auth'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { Button } from '../components/ui'
 import { PublishDialogs } from '../components/PublishDialogs'
+import { LocationPinPicker } from '../components/LocationPinPicker'
 import { SEVERITY_COLOR, MODE_GLYPH, MODE_LABEL } from '../lib/format'
-import type { ExternalVariant, Flow, LocationBlock, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
+import type { CountryRef, ExternalVariant, Flow, LocationBlock, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
+
+function slugCode(country: string, name: string): string {
+  const base = name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'LOC'
+  const rand = Math.random().toString(36).slice(2, 5).toUpperCase()
+  return `${country}${base}${rand}`
+}
 
 const MODES: TransportMode[] = ['sea', 'road', 'air', 'rail', 'warehouse']
 const FLOWS: { value: Flow; label: string }[] = [
@@ -43,21 +51,118 @@ function emptyLocation(): DraftLocation {
   return { modes: [], flow: 'both' }
 }
 
+function CustomPlaceForm({
+  query,
+  countries,
+  canPromote,
+  onAdd,
+  onCancel,
+}: {
+  query: string
+  countries: CountryRef[]
+  canPromote: boolean
+  onAdd: (p: Place) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(query)
+  const [country, setCountry] = useState('')
+  const [lat, setLat] = useState<number | null>(null)
+  const [lng, setLng] = useState<number | null>(null)
+  const [promote, setPromote] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const ready = name.trim() && country && lat != null && lng != null
+
+  async function add() {
+    if (!ready) return
+    setBusy(true)
+    const cc = countries.find((c) => c.code === country)
+    const code = slugCode(country, name)
+    const place: Place = {
+      name: name.trim(),
+      code,
+      country,
+      country_name: cc?.name ?? country,
+      flag: cc?.flag ?? '',
+      lat: lat as number,
+      lng: lng as number,
+      label: `${name.trim()} (${code})`,
+    }
+    if (promote && canPromote) {
+      try {
+        await api.adminCreatePlace({ code, name: place.name, country, lat: place.lat, lng: place.lng })
+      } catch {
+        /* already in master or not permitted — still use it on the alert */
+      }
+    }
+    onAdd(place)
+    setBusy(false)
+  }
+
+  return (
+    <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ font: '600 11px var(--font-display)', color: 'var(--t-60)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+        Add a place not in the master
+      </div>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Place name (e.g. Walvis Bay dry port)"
+        style={{ ...fieldStyle, height: 38 }}
+      />
+      <select value={country} onChange={(e) => setCountry(e.target.value)} style={{ ...fieldStyle, height: 38 }}>
+        <option value="">Select country…</option>
+        {countries.map((c) => (
+          <option key={c.code} value={c.code}>
+            {c.name} ({c.code})
+          </option>
+        ))}
+      </select>
+      <LocationPinPicker lat={lat} lng={lng} onChange={(la, ln) => { setLat(la); setLng(ln) }} height={170} />
+      {canPromote && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', font: '400 11.5px var(--font-body)', color: 'var(--t-65)' }}>
+          <input type="checkbox" checked={promote} onChange={(e) => setPromote(e.target.checked)} />
+          Also save to the location master (reusable by everyone)
+        </label>
+      )}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Button variant="ghost" onClick={onCancel} style={{ height: 34 }}>Cancel</Button>
+        <Button variant="primary" disabled={!ready || busy} onClick={add} style={{ height: 34 }}>
+          Use this location
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function LocationPicker({
   value,
   onPick,
+  countries,
+  canPromote,
 }: {
   value: DraftLocation
   onPick: (p: Place) => void
+  countries: CountryRef[]
+  canPromote: boolean
 }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Place[]>([])
   const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || adding) return
     void api.places(q).then(setResults).catch(() => setResults([]))
-  }, [q, open])
+  }, [q, open, adding])
+
+  function pick(p: Place) {
+    onPick(p)
+    setOpen(false)
+    setAdding(false)
+    setQ('')
+  }
 
   return (
     <div style={{ position: 'relative' }}>
@@ -85,43 +190,64 @@ function LocationPicker({
             border: '1px solid var(--border-strong)',
             boxShadow: 'var(--shadow-panel)',
             overflow: 'hidden',
+            width: 380,
           }}
         >
-          <input
-            autoFocus
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Type a port, city or border…"
-            style={{ ...fieldStyle, height: 40, borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border-soft)' }}
-          />
-          <div className="scroll-y" style={{ maxHeight: 200 }}>
-            {results.map((p) => (
+          {adding ? (
+            <CustomPlaceForm
+              query={q}
+              countries={countries}
+              canPromote={canPromote}
+              onAdd={pick}
+              onCancel={() => setAdding(false)}
+            />
+          ) : (
+            <>
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Type a port, city or border…"
+                style={{ ...fieldStyle, height: 40, borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border-soft)' }}
+              />
+              <div className="scroll-y" style={{ maxHeight: 200 }}>
+                {results.map((p) => (
+                  <div
+                    key={p.code}
+                    onClick={() => pick(p)}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      font: '500 12.5px var(--font-body)',
+                      color: 'var(--t-80)',
+                      borderBottom: '1px solid rgba(255,255,255,.05)',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.05)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    {p.flag} {p.label} · {p.country_name}
+                  </div>
+                ))}
+                {results.length === 0 && (
+                  <div style={{ padding: '10px 14px', color: 'var(--t-40)', font: '400 12px var(--font-body)' }}>
+                    No matches in the master
+                  </div>
+                )}
+              </div>
               <div
-                key={p.code}
-                onClick={() => {
-                  onPick(p)
-                  setOpen(false)
-                  setQ('')
-                }}
+                onClick={() => setAdding(true)}
                 style={{
-                  padding: '10px 14px',
+                  padding: '11px 14px',
                   cursor: 'pointer',
-                  font: '500 12.5px var(--font-body)',
-                  color: 'var(--t-80)',
-                  borderBottom: '1px solid rgba(255,255,255,.05)',
+                  borderTop: '1px solid var(--border-soft)',
+                  font: '600 12px var(--font-body)',
+                  color: 'var(--agl-yellow)',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.05)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                {p.flag} {p.label} · {p.country_name}
+                + Add a place not listed…
               </div>
-            ))}
-            {results.length === 0 && (
-              <div style={{ padding: '10px 14px', color: 'var(--t-40)', font: '400 12px var(--font-body)' }}>
-                No matches
-              </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -134,12 +260,16 @@ function LocationBlockEditor({
   index,
   onRemove,
   canRemove,
+  countries,
+  canPromote,
 }: {
   block: DraftLocation
   onChange: (b: DraftLocation) => void
   index: number
   onRemove: () => void
   canRemove: boolean
+  countries: CountryRef[]
+  canPromote: boolean
 }) {
   function toggleMode(m: TransportMode) {
     const has = block.modes.includes(m)
@@ -169,6 +299,8 @@ function LocationBlockEditor({
           <Label>Location{req}</Label>
           <LocationPicker
             value={block}
+            countries={countries}
+            canPromote={canPromote}
             onPick={(p) =>
               onChange({
                 ...block,
@@ -243,7 +375,10 @@ function LocationBlockEditor({
 
 export default function CreateAlert() {
   const navigate = useNavigate()
+  const { id: editId } = useParams()
+  const { user } = useAuth()
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null)
+  const [countries, setCountries] = useState<CountryRef[]>([])
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('')
   const [subCategory, setSubCategory] = useState('')
@@ -261,9 +396,33 @@ export default function CreateAlert() {
   const [showPublish, setShowPublish] = useState(false)
   const debounce = useRef<number>()
 
+  const canPromote = !!user?.rights.is_rights_manager
+
   useEffect(() => {
     void api.taxonomy().then(setTaxonomy)
+    void api.countries().then(setCountries).catch(() => setCountries([]))
   }, [])
+
+  // Continue editing an existing draft/rejected alert (route /create/:id).
+  useEffect(() => {
+    if (!editId) return
+    void api
+      .alert(editId)
+      .then((a) => {
+        setTitle(a.title)
+        setCategory(a.category)
+        setSubCategory(a.sub_category)
+        setIndustry(a.industry ?? '')
+        setSeverity(a.severity)
+        setValidFrom(a.valid_from)
+        setValidTo(a.valid_to ?? '')
+        setImpacts(a.impacts)
+        setActionPlan(a.action_plan)
+        setSourceUrl(a.urls[0] ?? '')
+        setLocations(a.locations.length ? (a.locations as DraftLocation[]) : [emptyLocation()])
+      })
+      .catch(() => setError('Could not load this alert for editing.'))
+  }, [editId])
 
   const completedLocations = useMemo(
     () => locations.filter((l) => l.country && l.modes.length > 0),
@@ -313,6 +472,12 @@ export default function CreateAlert() {
   }
 
   async function persistDraft(): Promise<string> {
+    // Editing an existing draft/rejected alert updates in place (no duplicate);
+    // otherwise create a new draft.
+    if (editId) {
+      await api.updateAlert(editId, buildPayload())
+      return editId
+    }
     const created = await api.createAlert(buildPayload())
     return created.id
   }
@@ -409,9 +574,15 @@ export default function CreateAlert() {
             +
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ font: '600 17px var(--font-display)', color: '#fff' }}>Create alert</div>
+            <div style={{ font: '600 17px var(--font-display)', color: '#fff' }}>
+              {editId ? 'Edit alert' : 'Create alert'}
+            </div>
             <div style={{ font: '400 11.5px var(--font-body)', color: 'var(--t-45)' }}>
-              Template: <span style={{ color: 'var(--agl-yellow)' }}>Seasonal port congestion — draft</span> · or start blank
+              {editId ? (
+                'Continue your draft — save, submit or publish when ready'
+              ) : (
+                <>Template: <span style={{ color: 'var(--agl-yellow)' }}>Seasonal port congestion — draft</span> · or start blank</>
+              )}
             </div>
           </div>
           <div onClick={() => navigate(-1)} style={{ font: '400 20px sans-serif', color: 'var(--t-40)', cursor: 'pointer' }}>
@@ -529,6 +700,8 @@ export default function CreateAlert() {
                 key={i}
                 index={i}
                 block={block}
+                countries={countries}
+                canPromote={canPromote}
                 canRemove={locations.length > 1}
                 onChange={(b) => setLocations((ls) => ls.map((x, j) => (j === i ? b : x)))}
                 onRemove={() => setLocations((ls) => ls.filter((_, j) => j !== i))}

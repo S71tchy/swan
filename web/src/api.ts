@@ -9,6 +9,8 @@ import type {
   DashboardStats,
   ExternalVariant,
   Place,
+  PlaceInput,
+  PlaceRow,
   ProfileInput,
   ProfileRow,
   RoutingInfo,
@@ -68,6 +70,7 @@ export const api = {
   dashboard: () => req<DashboardStats>('/dashboard/stats'),
   taxonomy: () => req<Taxonomy>('/meta/taxonomy'),
   places: (q = '') => req<Place[]>(`/meta/places?q=${encodeURIComponent(q)}`),
+  countries: () => req<CountryRef[]>('/meta/countries'),
 
   // alerts
   feed: (scope: 'published' | 'map' | 'mine' = 'published') =>
@@ -111,4 +114,14 @@ export const api = {
     }),
   adminDeleteProfile: (name: string) =>
     req<void>(`/admin/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  adminPlaces: () => req<PlaceRow[]>('/admin/places'),
+  adminCreatePlace: (body: PlaceInput) =>
+    req<PlaceRow>('/admin/places', { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdatePlace: (code: string, body: Partial<Omit<PlaceInput, 'code'>>) =>
+    req<PlaceRow>(`/admin/places/${encodeURIComponent(code)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  adminDeletePlace: (code: string) =>
+    req<void>(`/admin/places/${encodeURIComponent(code)}`, { method: 'DELETE' }),
 }
