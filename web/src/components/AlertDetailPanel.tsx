@@ -8,6 +8,7 @@ import {
 } from '../lib/format'
 import { Avatar } from './Avatar'
 import { CategoryChip, ChipOutline, SectionLabel, SeverityBadge } from './ui'
+import { CountryFlag } from './CountryFlag'
 
 function TrackMotif({ color }: { color: string }) {
   return (
@@ -127,7 +128,8 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
           {loc && <ChipOutline>{flowLabel(loc.flow)}</ChipOutline>}
           {loc && (
             <ChipOutline accent>
-              {loc.flag} {loc.name.split(' — ')[0]}, {loc.country}
+              <CountryFlag code={loc.country} size={14} title={loc.country_name} style={{ marginRight: 5 }} />
+              {loc.name.split(' — ')[0]}, {loc.country}
             </ChipOutline>
           )}
         </div>

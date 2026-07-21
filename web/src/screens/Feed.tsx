@@ -6,6 +6,7 @@ import { TopBar } from '../components/TopBar'
 import { LeftRail } from '../components/LeftRail'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { AlertDetailPanel } from '../components/AlertDetailPanel'
+import { CountryFlag } from '../components/CountryFlag'
 import {
   SEVERITY_COLOR,
   SEVERITY_TEXT,
@@ -104,8 +105,9 @@ function FeedCard({ alert, onClick }: { alert: Alert; onClick: () => void }) {
         }}
       >
         {loc && (
-          <span>
-            {loc.flag} {loc.name.split(' — ')[0]} · {modesLabel(loc.modes)} · {alert.valid_to_label}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <CountryFlag code={loc.country} size={14} title={loc.country_name} />
+            {loc.name.split(' — ')[0]} · {modesLabel(loc.modes)} · {alert.valid_to_label}
           </span>
         )}
         <span style={{ flex: 1 }} />
@@ -179,7 +181,13 @@ function MineList({
               </div>
               <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)', marginTop: 3 }}>
                 {a.category}
-                {loc ? ` · ${loc.flag} ${loc.name.split(' — ')[0]}` : ''} · updated {fmtAgo(a.updated_at)}
+                {loc && (
+                  <>
+                    {' · '}
+                    <CountryFlag code={loc.country} size={12} style={{ marginRight: 4 }} />
+                    {loc.name.split(' — ')[0]}
+                  </>
+                )}{' '}· updated {fmtAgo(a.updated_at)}
                 {a.status === 'rejected' && a.rejection_comment ? ` · “${a.rejection_comment}”` : ''}
               </div>
             </div>

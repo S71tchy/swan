@@ -6,6 +6,7 @@ import { MapBackdrop } from '../components/MapBackdrop'
 import { Button } from '../components/ui'
 import { PublishDialogs } from '../components/PublishDialogs'
 import { LocationPinPicker } from '../components/LocationPinPicker'
+import { CountryFlag } from '../components/CountryFlag'
 import { SEVERITY_COLOR, MODE_GLYPH, MODE_LABEL } from '../lib/format'
 import type { CountryRef, ExternalVariant, Flow, LocationBlock, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
 
@@ -225,7 +226,8 @@ function LocationPicker({
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.05)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    {p.flag} {p.label} · {p.country_name}
+                    <CountryFlag code={p.country} size={14} style={{ marginRight: 6 }} />
+                    {p.label} · {p.country_name}
                   </div>
                 ))}
                 {results.length === 0 && (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, ApiError } from '../api'
 import { useAuth } from '../auth'
@@ -9,6 +9,7 @@ import { Avatar } from '../components/Avatar'
 import { Button, SectionLabel } from '../components/ui'
 import { PlusIcon } from '../components/icons'
 import { LocationPinPicker } from '../components/LocationPinPicker'
+import { CountryFlag } from '../components/CountryFlag'
 import type { AdminUserRow, CountryRef, PlaceRow, ProfileRow } from '../types'
 
 const inputStyle: React.CSSProperties = {
@@ -97,7 +98,7 @@ function Chip({
   on,
   onClick,
 }: {
-  label: string
+  label: React.ReactNode
   on: boolean
   onClick: () => void
 }) {
@@ -134,7 +135,12 @@ function CountryPicker({
       {countries.map((c) => (
         <Chip
           key={c.code}
-          label={`${c.flag} ${c.code}`}
+          label={
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <CountryFlag code={c.code} size={14} title={c.name} />
+              {c.code}
+            </span>
+          }
           on={selected.includes(c.code)}
           onClick={() => onToggle(c.code)}
         />
@@ -751,12 +757,6 @@ export default function RightsAdmin() {
   } | null>(null)
   const [editPlace, setEditPlace] = useState<{ form: PlaceForm; isNew: boolean; usage: number } | null>(null)
 
-  const flagOf = useMemo(() => {
-    const m: Record<string, string> = {}
-    countries.forEach((c) => (m[c.code] = c.flag))
-    return m
-  }, [countries])
-
   const isManager = user?.rights.is_rights_manager
 
   async function reload() {
@@ -861,7 +861,18 @@ export default function RightsAdmin() {
   }
 
   const reachLabel = (codes: string[]) =>
-    codes.length === 0 ? '—' : codes.map((c) => `${flagOf[c] ?? ''}${c}`).join(' ')
+    codes.length === 0 ? (
+      '—'
+    ) : (
+      <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 7, alignItems: 'center' }}>
+        {codes.map((c) => (
+          <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <CountryFlag code={c} size={13} />
+            {c}
+          </span>
+        ))}
+      </span>
+    )
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
@@ -1055,9 +1066,13 @@ export default function RightsAdmin() {
                           border: '1px solid var(--border-soft)',
                           font: '500 10.5px var(--font-body)',
                           color: 'var(--t-75)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
                         }}
                       >
-                        {flagOf[c] ?? ''} {c}
+                        <CountryFlag code={c} size={13} />
+                        {c}
                       </span>
                     ))}
                   </div>
@@ -1136,7 +1151,10 @@ export default function RightsAdmin() {
               >
                 <span style={{ font: '600 11.5px var(--font-display)', color: 'var(--agl-yellow)' }}>{p.code}</span>
                 <span style={{ color: '#fff' }}>{p.name}</span>
-                <span style={{ color: 'var(--t-65)' }}>{p.flag} {p.country_name}</span>
+                <span style={{ color: 'var(--t-65)', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                  <CountryFlag code={p.country} size={14} />
+                  {p.country_name}
+                </span>
                 <span style={{ color: 'var(--t-55)', font: '400 11.5px var(--font-body)' }}>{p.lat.toFixed(2)}, {p.lng.toFixed(2)}</span>
                 <span style={{ color: p.usage ? 'var(--t-70)' : 'var(--t-40)' }}>{p.usage || '—'}</span>
               </div>

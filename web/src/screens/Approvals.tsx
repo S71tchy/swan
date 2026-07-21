@@ -5,6 +5,7 @@ import { TopBar } from '../components/TopBar'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { Button, SectionLabel, SeverityBadge } from '../components/ui'
 import { PublishDialogs } from '../components/PublishDialogs'
+import { CountryFlag } from '../components/CountryFlag'
 import { fmtAgo, fmtDateShort, modesLabel, MODE_GLYPH } from '../lib/format'
 import type { Alert, ApprovalQueue, ExternalVariant } from '../types'
 
@@ -215,7 +216,8 @@ export default function Approvals() {
                   </div>
                   <div style={{ font: '600 13px/1.4 var(--font-display)', color: '#fff' }}>{a.title}</div>
                   <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)', marginTop: 5 }}>
-                    {a.locations[0]?.flag} {a.locations[0]?.country_name} · {modesLabel(a.locations[0]?.modes ?? [])} ·{' '}
+                    <CountryFlag code={a.locations[0]?.country} size={13} style={{ marginRight: 5 }} />
+                    {a.locations[0]?.country_name} · {modesLabel(a.locations[0]?.modes ?? [])} ·{' '}
                     {a.author.name}
                   </div>
                 </div>

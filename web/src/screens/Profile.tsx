@@ -5,6 +5,7 @@ import { TopBar } from '../components/TopBar'
 import { LeftRail } from '../components/LeftRail'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { Avatar } from '../components/Avatar'
+import { CountryFlag } from '../components/CountryFlag'
 import { Button, SectionLabel } from '../components/ui'
 import { api } from '../api'
 import { fmtAgo } from '../lib/format'
@@ -254,7 +255,10 @@ export default function Profile() {
               </div>
               {user.perimeter.map((row) => (
                 <div key={row.country} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,.07)', font: '400 12.5px var(--font-body)', color: 'var(--t-80)' }}>
-                  <span>{row.flag} {row.country_name}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                    <CountryFlag code={row.country} size={15} />
+                    {row.country_name}
+                  </span>
                   <span style={{ color: 'var(--t-50)' }}>{row.source}</span>
                   <span style={{ color: row.internal ? 'var(--agl-yellow)' : 'var(--t-50)' }}>
                     {row.internal ? '✓ Publish' : 'Submit for approval'}
