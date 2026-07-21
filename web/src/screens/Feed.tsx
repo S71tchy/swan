@@ -115,12 +115,30 @@ function FeedCard({ alert, onClick }: { alert: Alert; onClick: () => void }) {
   )
 }
 
+// Mirrors the server's routing_for_locations: an editable alert will publish
+// directly only if the author holds internal rights for every location country.
+function routeHint(
+  a: Alert,
+  perimeter: string[],
+  canCreate: boolean,
+): { publish: boolean; uncovered: string[] } | null {
+  if (a.status !== 'draft' && a.status !== 'rejected') return null
+  const countries = [...new Set(a.locations.map((l) => l.country).filter(Boolean))]
+  if (countries.length === 0) return null
+  const uncovered = countries.filter((c) => !perimeter.includes(c))
+  return { publish: canCreate && uncovered.length === 0, uncovered }
+}
+
 function MineList({
   alerts,
+  perimeter,
+  canCreate,
   onEdit,
   onView,
 }: {
   alerts: Alert[]
+  perimeter: string[]
+  canCreate: boolean
   onEdit: (a: Alert) => void
   onView: (a: Alert) => void
 }) {
@@ -135,6 +153,7 @@ function MineList({
       {sorted.map((a) => {
         const editable = a.status === 'draft' || a.status === 'rejected'
         const loc = a.locations[0]
+        const route = routeHint(a, perimeter, canCreate)
         return (
           <div
             key={a.id}
@@ -164,6 +183,26 @@ function MineList({
                 {a.status === 'rejected' && a.rejection_comment ? ` · “${a.rejection_comment}”` : ''}
               </div>
             </div>
+            {route && (
+              <span
+                title={
+                  route.publish
+                    ? 'You hold publication rights for every location — this will publish directly.'
+                    : `You lack rights for ${route.uncovered.join(', ')} — this will route to an approver.`
+                }
+                style={{
+                  padding: '3px 9px',
+                  borderRadius: 12,
+                  whiteSpace: 'nowrap',
+                  font: '500 10.5px var(--font-body)',
+                  color: route.publish ? 'var(--agl-turquoise)' : 'var(--sev-warning)',
+                  background: route.publish ? 'rgba(0,166,193,.12)' : 'rgba(237,140,0,.12)',
+                  border: `1px solid ${route.publish ? 'rgba(0,166,193,.4)' : 'rgba(237,140,0,.4)'}`,
+                }}
+              >
+                {route.publish ? 'Will publish' : 'Will submit for approval'}
+              </span>
+            )}
             <span style={{ font: '500 11.5px var(--font-body)', color: editable ? 'var(--agl-yellow)' : 'var(--t-45)', whiteSpace: 'nowrap' }}>
               {editable ? 'Continue →' : 'View'}
             </span>
@@ -336,7 +375,13 @@ export default function Feed() {
 
         {/* body */}
         {scope === 'mine' ? (
-          <MineList alerts={visible} onEdit={(a) => navigate(`/create/${a.id}`)} onView={(a) => setSelected(a)} />
+          <MineList
+            alerts={visible}
+            perimeter={perimeter}
+            canCreate={user?.rights.can_create ?? false}
+            onEdit={(a) => navigate(`/create/${a.id}`)}
+            onView={(a) => setSelected(a)}
+          />
         ) : (
           <div className="scroll-y" style={{ flex: 1, padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {groups.length === 0 && (

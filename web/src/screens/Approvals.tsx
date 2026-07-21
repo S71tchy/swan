@@ -168,6 +168,20 @@ export default function Approvals() {
               {' · '}
               {queue?.pending ?? 0} pending
             </div>
+            <div
+              style={{
+                marginTop: 10,
+                borderRadius: 10,
+                border: '1px solid var(--border-soft)',
+                background: 'rgba(255,255,255,.03)',
+                padding: '8px 11px',
+                font: '400 10.5px/1.5 var(--font-body)',
+                color: 'var(--t-50)',
+              }}
+            >
+              Shows only <b style={{ color: 'var(--t-70)' }}>submitted</b> alerts in your perimeter. Drafts, and
+              alerts whose author can publish them directly, never appear here.
+            </div>
           </div>
           <div className="scroll-y" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 14px 14px' }}>
             {queue?.alerts.length === 0 && (
