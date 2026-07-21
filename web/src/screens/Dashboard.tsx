@@ -75,14 +75,20 @@ function markerElement(cluster: Cluster, selected: boolean): HTMLElement {
   return el
 }
 
-function StatCard({
+const bigNum = { font: "700 26px var(--font-display)", color: '#fff' } as const
+const statLabel = {
+  font: '400 11px var(--font-body)',
+  color: 'var(--t-50)',
+  marginTop: 2,
+} as const
+
+// One segment of the unified stat strip.
+function Segment({
   children,
-  width,
   accent = false,
   onClick,
 }: {
   children: React.ReactNode
-  width: number
   accent?: boolean
   onClick?: () => void
 }) {
@@ -90,13 +96,12 @@ function StatCard({
     <div
       onClick={onClick}
       style={{
-        width,
-        borderRadius: 16,
-        background: 'var(--glass-82)',
-        border: `1px solid ${accent ? 'var(--yellow-border)' : 'var(--border-soft)'}`,
-        backdropFilter: 'blur(14px)',
-        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: '12px 22px',
         cursor: onClick ? 'pointer' : 'default',
+        background: accent ? 'var(--yellow-tint-soft)' : 'transparent',
       }}
     >
       {children}
@@ -104,12 +109,7 @@ function StatCard({
   )
 }
 
-const bigNum = { font: "700 26px var(--font-display)", color: '#fff' } as const
-const statLabel = {
-  font: '400 11px var(--font-body)',
-  color: 'var(--t-50)',
-  marginTop: 2,
-} as const
+const SegDivider = () => <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border-soft)' }} />
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -192,46 +192,63 @@ export default function Dashboard() {
       <TopBar showSearch showCreate />
       <LeftRail />
 
-      {/* Stat strip */}
-      <div style={{ position: 'absolute', left: 100, top: 88, display: 'flex', gap: 10, zIndex: 15 }}>
-        <StatCard width={150}>
+      {/* Stat strip — one floating glass panel, segmented */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 100,
+          top: 88,
+          display: 'flex',
+          alignItems: 'stretch',
+          zIndex: 15,
+          borderRadius: 16,
+          background: 'var(--glass-82)',
+          border: '1px solid var(--border-soft)',
+          backdropFilter: 'blur(14px)',
+          boxShadow: 'var(--shadow-panel)',
+          overflow: 'hidden',
+        }}
+      >
+        <Segment>
           <div style={bigNum}>{stats?.active_alerts ?? '—'}</div>
           <div style={statLabel}>Active alerts</div>
-        </StatCard>
-        <StatCard width={190}>
-          <div style={bigNum}>
-            {stats?.severity.critical ?? 0}
-            <span style={{ fontSize: 15, color: 'var(--t-45)' }}> critical</span>
+        </Segment>
+
+        <SegDivider />
+
+        <Segment>
+          <div style={{ display: 'flex', gap: 14 }}>
+            {(['critical', 'warning', 'watch', 'info'] as Severity[]).map((s) => (
+              <div
+                key={s}
+                title={s.charAt(0).toUpperCase() + s.slice(1)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: SEVERITY_COLOR[s], flex: 'none' }} />
+                <span style={{ font: '700 18px var(--font-display)', color: '#fff' }}>
+                  {stats?.severity[s] ?? 0}
+                </span>
+              </div>
+            ))}
           </div>
-          <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-            {stats &&
-              (['critical', 'warning', 'watch', 'info'] as Severity[]).map((s) => {
-                const count = stats.severity[s]
-                if (!count) return null
-                return (
-                  <span
-                    key={s}
-                    style={{
-                      width: Math.max(12, count * 13),
-                      height: 5,
-                      borderRadius: 3,
-                      background: SEVERITY_COLOR[s],
-                    }}
-                  />
-                )
-              })}
-          </div>
-        </StatCard>
-        <StatCard width={160} accent onClick={() => navigate('/approvals')}>
+          <div style={statLabel}>By severity</div>
+        </Segment>
+
+        <SegDivider />
+
+        <Segment accent onClick={() => navigate('/approvals')}>
           <div style={{ ...bigNum, color: 'var(--agl-yellow)' }}>
             {stats?.awaiting_your_approval ?? 0}
           </div>
           <div style={statLabel}>Awaiting your approval</div>
-        </StatCard>
-        <StatCard width={150}>
+        </Segment>
+
+        <SegDivider />
+
+        <Segment>
           <div style={bigNum}>{stats?.countries_affected ?? '—'}</div>
           <div style={statLabel}>Countries affected</div>
-        </StatCard>
+        </Segment>
       </div>
 
       {/* Severity legend */}
