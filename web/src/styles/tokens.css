@@ -103,6 +103,18 @@ select {
   font-family: inherit;
 }
 
+/* Native <select> popups: render the option list dark so white text is legible.
+   `color-scheme` fixes Chrome/Edge; the explicit <option> colours cover Firefox
+   and any engine that ignores it. */
+select {
+  color-scheme: dark;
+}
+
+option {
+  background-color: #13253f;
+  color: #fff;
+}
+
 /* Shared animations from the mock */
 @keyframes swanPulse {
   0% {
