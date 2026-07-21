@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import { swanMapStyle } from '../lib/mapStyle'
+import { addDetailOverlay } from '../lib/mapOverlay'
 
 // A small MapLibre map you click to drop a pin. Reuses the Ops-Deck style and
 // degrades gracefully offline (navy background, marker still projected).
@@ -34,6 +35,7 @@ export function LocationPinPicker({
       maxZoom: 9,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
+    map.on('load', () => addDetailOverlay(map))
     map.on('click', (e) => {
       onChangeRef.current(+e.lngLat.lat.toFixed(4), +e.lngLat.lng.toFixed(4))
     })

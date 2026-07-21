@@ -7,6 +7,10 @@ import type { StyleSpecification } from 'maplibre-gl'
 export const swanMapStyle: StyleSpecification = {
   version: 8,
   name: 'SWAN Ops Deck',
+  // Fonts for label layers (province/city names in the detail overlay). Served
+  // by the same token-free demotiles host we already use for tiles; only fetched
+  // once you zoom in far enough for labels to appear.
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     demotiles: {
       type: 'vector',

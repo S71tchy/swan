@@ -7,6 +7,7 @@ import { TopBar } from '../components/TopBar'
 import { LeftRail } from '../components/LeftRail'
 import { AlertDetailPanel } from '../components/AlertDetailPanel'
 import { swanMapStyle } from '../lib/mapStyle'
+import { addDetailOverlay } from '../lib/mapOverlay'
 import { MARKER_SPEC, SEVERITY_COLOR, maxSeverity } from '../lib/format'
 import type { Alert, DashboardStats, Severity } from '../types'
 
@@ -139,10 +140,11 @@ export default function Dashboard() {
       center: [20, 3],
       zoom: 2.4,
       attributionControl: false,
-      maxZoom: 6,
+      maxZoom: 8,
       minZoom: 1.5,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+    map.on('load', () => addDetailOverlay(map))
     mapRef.current = map
     return () => {
       map.remove()
