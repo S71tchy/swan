@@ -10,9 +10,14 @@ from datetime import date, datetime, timedelta, timezone
 from app.database import Base, SessionLocal, engine
 from app.models import Alert, AuditLog, Place, Profile, User
 from app.reference import PLACES, STANDARD_PROFILES, country_meta
+from app.security import hash_password
 
 NOW = datetime.now(timezone.utc)
 TODAY = date.today()
+
+# Every seeded identity shares this password so username/password sign-in is
+# testable out of the box (email is the username). Dev convenience only.
+DEV_PASSWORD = "swan1234"
 
 
 def _place(name_fragment: str) -> dict:
@@ -174,7 +179,9 @@ def seed_users(db) -> dict[str, User]:
             notify_submitted=True, notify_submitted_area="WORLD profile",
         ),
     }
+    pw = hash_password(DEV_PASSWORD)
     for u in users.values():
+        u.password_hash = pw
         db.add(u)
     db.commit()
     for u in users.values():

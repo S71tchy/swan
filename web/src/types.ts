@@ -202,6 +202,7 @@ export interface AdminUserRow {
   effective_external: string[]
   is_effective_manager: boolean
   alerts_authored: number
+  has_password: boolean
 }
 
 export interface AdminUserInput {
@@ -222,6 +223,7 @@ export interface AdminUserInput {
   external_pub_countries?: string[]
   client_scope?: string[]
   profiles?: string[]
+  password?: string
 }
 
 export interface ProfileInput {

@@ -14,6 +14,7 @@ interface AuthState {
   user: UserMe | null
   loading: boolean
   login: (email?: string) => Promise<void>
+  loginWithPassword: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
 }
@@ -49,14 +50,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refresh],
   )
 
+  const loginWithPassword = useCallback(
+    async (email: string, password: string) => {
+      await api.passwordLogin(email, password)
+      await refresh()
+    },
+    [refresh],
+  )
+
   const logout = useCallback(async () => {
     await api.logout()
     setUser(null)
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, login, logout, refresh }),
-    [user, loading, login, logout, refresh],
+    () => ({ user, loading, login, loginWithPassword, logout, refresh }),
+    [user, loading, login, loginWithPassword, logout, refresh],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -48,26 +48,56 @@ function GoogleGrid() {
   )
 }
 
+const loginInput: React.CSSProperties = {
+  width: '100%',
+  height: 46,
+  borderRadius: 12,
+  background: 'rgba(255,255,255,.05)',
+  border: '1px solid var(--border-strong)',
+  padding: '0 14px',
+  color: '#fff',
+  font: '400 13px var(--font-body)',
+  outline: 'none',
+}
+
 export default function Login() {
-  const { login } = useAuth()
+  const { login, loginWithPassword } = useAuth()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [accounts, setAccounts] = useState<UserPublic[]>([])
   const [showSwitcher, setShowSwitcher] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   useEffect(() => {
     void api.accounts().then(setAccounts).catch(() => setAccounts([]))
   }, [])
 
-  async function signIn(email?: string) {
+  async function signIn(demoEmail?: string) {
     setBusy(true)
     setError('')
     try {
-      await login(email)
+      await login(demoEmail)
       navigate('/')
     } catch {
       setError('Sign-in failed — is the API running?')
+      setBusy(false)
+    }
+  }
+
+  async function signInPassword() {
+    if (!email.trim() || !password) {
+      setError('Enter your email and password.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await loginWithPassword(email.trim(), password)
+      navigate('/')
+    } catch {
+      setError('Invalid email or password.')
       setBusy(false)
     }
   }
@@ -120,39 +150,89 @@ export default function Login() {
           Live disruption awareness across the AGL network
         </div>
 
+        {/* Primary: username (email) + password */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            void signInPassword()
+          }}
+          style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28 }}
+        >
+          <input
+            type="email"
+            autoComplete="username"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={loginInput}
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={loginInput}
+          />
+          <button
+            type="submit"
+            disabled={busy}
+            style={{
+              width: '100%',
+              height: 50,
+              marginTop: 4,
+              border: 'none',
+              borderRadius: 25,
+              background: 'var(--agl-yellow)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              font: '600 14px var(--font-display)',
+              color: 'var(--agl-navy)',
+              boxShadow: 'var(--shadow-cta)',
+              opacity: busy ? 0.7 : 1,
+              cursor: busy ? 'default' : 'pointer',
+            }}
+          >
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+
+        {error && (
+          <div style={{ font: '400 11.5px var(--font-body)', color: 'var(--sev-critical-text)', marginTop: 12 }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', margin: '18px 0 14px' }}>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,.1)' }} />
+          <span style={{ font: '400 10px var(--font-body)', color: 'var(--t-35)', letterSpacing: '1px' }}>OR</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,.1)' }} />
+        </div>
+
         <button
           onClick={() => signIn()}
           disabled={busy}
           style={{
             width: '100%',
-            height: 50,
-            marginTop: 32,
-            border: 'none',
-            borderRadius: 25,
-            background: 'var(--agl-yellow)',
+            height: 46,
+            border: '1px solid rgba(255,255,255,.2)',
+            borderRadius: 23,
+            background: 'transparent',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 10,
-            font: "600 14px var(--font-display)",
-            color: 'var(--agl-navy)',
-            boxShadow: 'var(--shadow-cta)',
+            font: '500 13px var(--font-body)',
+            color: '#fff',
             opacity: busy ? 0.7 : 1,
+            cursor: busy ? 'default' : 'pointer',
           }}
         >
           <GoogleGrid />
-          {busy ? 'Signing in…' : 'Sign in with your AGL account'}
+          Sign in with your AGL account (SSO)
         </button>
-
-        <div style={{ font: '400 11.5px var(--font-body)', color: 'var(--t-40)', marginTop: 16 }}>
-          Single sign-on · no separate password
-        </div>
-
-        {error && (
-          <div style={{ font: '400 11.5px var(--font-body)', color: 'var(--sev-critical-text)', marginTop: 10 }}>
-            {error}
-          </div>
-        )}
 
         <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,.1)', margin: '26px 0 16px' }} />
 

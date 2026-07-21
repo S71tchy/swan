@@ -198,6 +198,12 @@ class DevLoginRequest(BaseModel):
     email: str | None = None
 
 
+class PasswordLoginRequest(BaseModel):
+    # Interim username/password sign-in. Email is the username.
+    email: str
+    password: str
+
+
 class SessionInfo(BaseModel):
     user: UserPublic
 
@@ -258,6 +264,7 @@ class AdminUserRow(BaseModel):
     effective_external: list[str]
     is_effective_manager: bool
     alerts_authored: int
+    has_password: bool
 
 
 class AdminUserCreate(BaseModel):
@@ -278,6 +285,7 @@ class AdminUserCreate(BaseModel):
     external_pub_countries: list[str] = Field(default_factory=list)
     client_scope: list[str] = Field(default_factory=list)
     profiles: list[str] = Field(default_factory=list)
+    password: str | None = None       # optional initial password
 
 
 class AdminUserUpdate(BaseModel):
@@ -298,6 +306,7 @@ class AdminUserUpdate(BaseModel):
     external_pub_countries: list[str] | None = None
     client_scope: list[str] | None = None
     profiles: list[str] | None = None
+    password: str | None = None       # set/reset password when non-empty
 
 
 # --------------------------------------------------------------------------- #

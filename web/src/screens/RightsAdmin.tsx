@@ -164,6 +164,7 @@ type UserForm = {
   external_pub_countries: string[]
   client_scope: string[]
   profiles: string[]
+  password: string
 }
 
 function emptyUser(): UserForm {
@@ -185,6 +186,7 @@ function emptyUser(): UserForm {
     external_pub_countries: [],
     client_scope: [],
     profiles: [],
+    password: '',
   }
 }
 
@@ -207,6 +209,7 @@ function rowToForm(u: AdminUserRow): UserForm {
     external_pub_countries: [...u.external_pub_countries],
     client_scope: [...u.client_scope],
     profiles: [...u.profiles],
+    password: '',
   }
 }
 
@@ -243,6 +246,7 @@ function UserEditor({
   countries,
   profiles,
   editingSelf,
+  hasPassword,
   onClose,
   onSaved,
   onDeleted,
@@ -252,6 +256,7 @@ function UserEditor({
   countries: CountryRef[]
   profiles: ProfileRow[]
   editingSelf: boolean
+  hasPassword: boolean
   userId?: string
   onClose: () => void
   onSaved: (payload: UserForm, id?: string) => Promise<void>
@@ -378,6 +383,17 @@ function UserEditor({
           on={form.avatar_gold}
           onToggle={() => set('avatar_gold', !form.avatar_gold)}
         />
+
+        <Field label={isNew ? 'Password (optional — email is the username)' : hasPassword ? 'Reset password (leave blank to keep current)' : 'Set password (none yet)'}>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={form.password}
+            onChange={(e) => set('password', e.target.value)}
+            placeholder={hasPassword ? '••••••••' : 'min 6 characters'}
+            style={inputStyle}
+          />
+        </Field>
 
         <div style={{ height: 1, background: 'rgba(255,255,255,.08)' }} />
 
@@ -728,7 +744,7 @@ export default function RightsAdmin() {
   const [users, setUsers] = useState<AdminUserRow[]>([])
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
   const [places, setPlaces] = useState<PlaceRow[]>([])
-  const [editUser, setEditUser] = useState<{ form: UserForm; id?: string } | null>(null)
+  const [editUser, setEditUser] = useState<{ form: UserForm; id?: string; hasPassword?: boolean } | null>(null)
   const [editProfile, setEditProfile] = useState<{
     data: { name: string; countries: string[]; embeds_rights_manager: boolean }
     isNew: boolean
@@ -956,7 +972,7 @@ export default function RightsAdmin() {
             {users.map((u) => (
               <div
                 key={u.id}
-                onClick={() => setEditUser({ form: rowToForm(u), id: u.id })}
+                onClick={() => setEditUser({ form: rowToForm(u), id: u.id, hasPassword: u.has_password })}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '2.4fr 1.3fr .8fr 1.6fr 1.6fr .9fr',
@@ -1137,6 +1153,7 @@ export default function RightsAdmin() {
           countries={countries}
           profiles={profiles}
           editingSelf={editUser.id === user.id}
+          hasPassword={editUser.hasPassword ?? false}
           onClose={() => setEditUser(null)}
           onSaved={(payload) => saveUser(payload, editUser.id)}
           onDeleted={editUser.id ? () => deleteUser(editUser.id!) : undefined}

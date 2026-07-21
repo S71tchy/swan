@@ -54,6 +54,11 @@ export const api = {
   // auth
   login: (email?: string) =>
     req<UserPublic>('/auth/login', { method: 'POST', body: JSON.stringify({ email: email ?? null }) }),
+  passwordLogin: (email: string, password: string) =>
+    req<UserPublic>('/auth/password-login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
   logout: () => req<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
   session: () => req<UserPublic>('/auth/session'),
   accounts: () => req<UserPublic[]>('/auth/accounts'),

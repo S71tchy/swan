@@ -24,6 +24,9 @@ from app.rights import (
     effective_internal_countries,
     is_rights_manager,
 )
+from app.security import hash_password
+
+_MIN_PASSWORD_LEN = 6
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -129,7 +132,17 @@ def _user_row(db: Session, u: User) -> schemas.AdminUserRow:
         effective_external=sorted(effective_external_countries(db, u)),
         is_effective_manager=is_rights_manager(db, u),
         alerts_authored=authored,
+        has_password=bool(u.password_hash),
     )
+
+
+def _hash_or_reject(password: str) -> str:
+    if len(password) < _MIN_PASSWORD_LEN:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Password must be at least {_MIN_PASSWORD_LEN} characters",
+        )
+    return hash_password(password)
 
 
 def _profile_row(db: Session, p: Profile, all_users: list[User] | None = None) -> schemas.ProfileRow:
@@ -210,6 +223,7 @@ def create_user(
         external_pub_countries=_validate_countries(body.external_pub_countries),
         client_scope=_validate_countries(body.client_scope),
         profiles=_validate_profiles(db, body.profiles),
+        password_hash=_hash_or_reject(body.password) if body.password else None,
     )
     db.add(user)
     db.flush()
@@ -272,6 +286,11 @@ def update_user(
     if "is_rights_manager" in updates and updates["is_rights_manager"] is not None:
         user.is_rights_manager = updates["is_rights_manager"]
 
+    password_changed = False
+    if updates.get("password"):
+        user.password_hash = _hash_or_reject(updates["password"])
+        password_changed = True
+
     # Safety: a manager cannot revoke their own administration access and lock
     # themselves (and possibly everyone) out mid-session.
     if user.id == actor.id and not is_rights_manager(db, user):
@@ -282,6 +301,8 @@ def update_user(
 
     after = _user_snapshot(user)
     changed = _diff(before, after)
+    if password_changed:
+        changed["password"] = ["***", "***"]  # recorded, never the value itself
     audit.record(
         db, actor, "user.updated", user.id, target_type="user",
         detail={"changed": changed} if changed else {"changed": {}},

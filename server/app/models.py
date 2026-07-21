@@ -69,6 +69,8 @@ class User(Base):
     locale: Mapped[str] = mapped_column(String, default="en")  # culture
     timezone: Mapped[str] = mapped_column(String, default="UTC")
     avatar_gold: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Interim password auth (nullable: SSO-only users have no local password).
+    password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # --- Rights model (spec §4.1), four dimensions + manager flag ---
     can_create: Mapped[bool] = mapped_column(Boolean, default=True)

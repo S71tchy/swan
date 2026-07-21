@@ -13,8 +13,8 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import User
-from app.schemas import DevLoginRequest, UserPublic
-from app.security import COOKIE_NAME, create_session_token
+from app.schemas import DevLoginRequest, PasswordLoginRequest, UserPublic
+from app.security import COOKIE_NAME, create_session_token, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -49,6 +49,20 @@ def login(body: DevLoginRequest, response: Response, db: Session = Depends(get_d
         if not user:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No users seeded")
 
+    _set_session_cookie(response, user)
+    return UserPublic.model_validate(user)
+
+
+@router.post("/password-login", response_model=UserPublic)
+def password_login(body: PasswordLoginRequest, response: Response, db: Session = Depends(get_db)):
+    """Interim username/password sign-in (email is the username).
+
+    Runs alongside the SSO stub; a real OIDC flow would replace this. The error
+    is intentionally generic so it doesn't reveal whether an email exists."""
+    email = (body.email or "").strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     _set_session_cookie(response, user)
     return UserPublic.model_validate(user)
 
