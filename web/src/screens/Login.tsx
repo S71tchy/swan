@@ -3,39 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { Logo } from '../components/Logo'
+import { MapBackdrop } from '../components/MapBackdrop'
 import type { UserPublic } from '../types'
-
-function LoginBackdrop() {
-  return (
-    <svg
-      viewBox="0 0 1440 900"
-      preserveAspectRatio="xMidYMid slice"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-    >
-      <defs>
-        <radialGradient id="seaLogin" cx="50%" cy="45%" r="80%">
-          <stop offset="0%" stopColor="#13253F" />
-          <stop offset="100%" stopColor="#0B1729" />
-        </radialGradient>
-      </defs>
-      <rect width="1440" height="900" fill="url(#seaLogin)" />
-      <g fill="#1E3556" stroke="#2C4A76" strokeWidth="1.5" strokeLinejoin="round" opacity=".8">
-        <path d="M585,-20 L560,40 L600,75 L650,60 L680,95 L740,80 L790,100 L830,70 L840,-20 Z" />
-        <path d="M560,150 C540,165 515,190 502,225 C490,258 478,285 470,310 C466,332 480,352 515,368 C545,380 585,388 625,396 C665,404 690,436 693,485 C695,535 685,585 668,635 C660,672 668,705 693,725 C720,742 752,730 763,698 C782,645 798,595 806,552 C818,505 836,470 858,442 C880,415 898,390 903,372 C908,352 892,342 866,336 C846,330 834,306 832,276 C830,240 838,212 843,196 C846,178 830,168 800,164 C755,158 700,150 655,144 C615,140 580,142 560,150 Z" />
-        <path d="M868,160 L850,200 L862,250 L905,300 L965,320 L1010,290 L1030,235 L1000,185 L940,160 Z" />
-        <path d="M-20,470 L60,455 L145,490 L190,560 L175,650 L120,740 L60,830 L-20,860 Z" />
-      </g>
-      <g opacity=".5">
-        <circle cx="790" cy="592" r="8" fill="#CF4527" />
-        <circle cx="790" cy="592" r="18" fill="none" stroke="#CF4527" strokeWidth="1" />
-        <circle cx="628" cy="392" r="6" fill="#ED8C00" />
-        <circle cx="534" cy="372" r="6" fill="#ED8C00" />
-        <circle cx="850" cy="468" r="5" fill="#EED58E" />
-        <circle cx="756" cy="700" r="5" fill="#EED58E" />
-      </g>
-    </svg>
-  )
-}
 
 function GoogleGrid() {
   return (
@@ -104,8 +73,7 @@ export default function Login() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
-      <LoginBackdrop />
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(8,14,26,.45)' }} />
+      <MapBackdrop opacity={0.5} blur={2} overlay="rgba(8,14,26,.45)" />
 
       <div
         style={{
