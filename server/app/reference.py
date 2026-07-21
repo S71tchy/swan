@@ -3,26 +3,75 @@ gazetteer of African ports/cities used both by the create-form location search
 (a stub for the Phase 2 geocoder) and by the seed data."""
 from __future__ import annotations
 
-# ISO2 -> display name + flag emoji (placeholder glyphs per the mock).
+def _flag_emoji(code: str) -> str:
+    """Regional-indicator flag emoji for an ISO2 code (fallback glyph; the UI now
+    renders circular SVG flags from /flags/{code}.svg)."""
+    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in code.upper())
+
+
+# All 54 sovereign African states, ISO2 -> display name. The flag emoji is derived
+# from the code; the web app renders bundled circular SVG flags keyed by the code.
+_COUNTRY_NAMES: dict[str, str] = {
+    "DZ": "Algeria",
+    "AO": "Angola",
+    "BJ": "Benin",
+    "BW": "Botswana",
+    "BF": "Burkina Faso",
+    "BI": "Burundi",
+    "CV": "Cabo Verde",
+    "CM": "Cameroon",
+    "CF": "Central African Republic",
+    "TD": "Chad",
+    "KM": "Comoros",
+    "CG": "Congo (Rep.)",
+    "CD": "DR Congo",
+    "CI": "Côte d'Ivoire",
+    "DJ": "Djibouti",
+    "EG": "Egypt",
+    "GQ": "Equatorial Guinea",
+    "ER": "Eritrea",
+    "SZ": "Eswatini",
+    "ET": "Ethiopia",
+    "GA": "Gabon",
+    "GM": "Gambia",
+    "GH": "Ghana",
+    "GN": "Guinea",
+    "GW": "Guinea-Bissau",
+    "KE": "Kenya",
+    "LS": "Lesotho",
+    "LR": "Liberia",
+    "LY": "Libya",
+    "MG": "Madagascar",
+    "MW": "Malawi",
+    "ML": "Mali",
+    "MR": "Mauritania",
+    "MU": "Mauritius",
+    "MA": "Morocco",
+    "MZ": "Mozambique",
+    "NA": "Namibia",
+    "NE": "Niger",
+    "NG": "Nigeria",
+    "RW": "Rwanda",
+    "ST": "São Tomé and Príncipe",
+    "SN": "Senegal",
+    "SC": "Seychelles",
+    "SL": "Sierra Leone",
+    "SO": "Somalia",
+    "ZA": "South Africa",
+    "SS": "South Sudan",
+    "SD": "Sudan",
+    "TZ": "Tanzania",
+    "TG": "Togo",
+    "TN": "Tunisia",
+    "UG": "Uganda",
+    "ZM": "Zambia",
+    "ZW": "Zimbabwe",
+}
+
+# ISO2 -> {name, flag}. Sorted by display name for a tidy country picker.
 COUNTRY_CATALOGUE: dict[str, dict] = {
-    "MZ": {"name": "Mozambique", "flag": "🇲🇿"},
-    "CI": {"name": "Côte d'Ivoire", "flag": "🇨🇮"},
-    "CD": {"name": "DRC", "flag": "🇨🇩"},
-    "ZA": {"name": "South Africa", "flag": "🇿🇦"},
-    "KE": {"name": "Kenya", "flag": "🇰🇪"},
-    "EG": {"name": "Egypt", "flag": "🇪🇬"},
-    "NG": {"name": "Nigeria", "flag": "🇳🇬"},
-    "GH": {"name": "Ghana", "flag": "🇬🇭"},
-    "ZM": {"name": "Zambia", "flag": "🇿🇲"},
-    "TZ": {"name": "Tanzania", "flag": "🇹🇿"},
-    "SN": {"name": "Senegal", "flag": "🇸🇳"},
-    "CM": {"name": "Cameroon", "flag": "🇨🇲"},
-    "AO": {"name": "Angola", "flag": "🇦🇴"},
-    "NA": {"name": "Namibia", "flag": "🇳🇦"},
-    "TG": {"name": "Togo", "flag": "🇹🇬"},
-    "BJ": {"name": "Benin", "flag": "🇧🇯"},
-    "MA": {"name": "Morocco", "flag": "🇲🇦"},
-    "DJ": {"name": "Djibouti", "flag": "🇩🇯"},
+    code: {"name": name, "flag": _flag_emoji(code)}
+    for code, name in sorted(_COUNTRY_NAMES.items(), key=lambda kv: kv[1])
 }
 
 # Standard rights profiles (spec §4.2). name -> country list (+ manager flag).

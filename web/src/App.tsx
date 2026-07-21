@@ -7,6 +7,7 @@ import CreateAlert from './screens/CreateAlert'
 import Approvals from './screens/Approvals'
 import Profile from './screens/Profile'
 import RightsAdmin from './screens/RightsAdmin'
+import MasterData from './screens/MasterData'
 
 function FullBleedLoader() {
   return (
@@ -97,6 +98,14 @@ export default function App() {
         element={
           <RequireAuth>
             <RightsAdmin />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/data"
+        element={
+          <RequireAuth>
+            <MasterData />
           </RequireAuth>
         }
       />
