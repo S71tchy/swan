@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../auth'
 import {
   ApprovalsIcon,
   FeedIcon,
@@ -73,6 +74,8 @@ function RailButton({ item, active }: { item: Item; active: boolean }) {
 
 export function LeftRail() {
   const location = useLocation()
+  const { user } = useAuth()
+  const isManager = user?.rights.is_rights_manager
   const [approvals, setApprovals] = useState(0)
 
   useEffect(() => {
@@ -104,6 +107,7 @@ export function LeftRail() {
     if (location.pathname.startsWith('/feed')) return 'feed'
     if (location.pathname.startsWith('/create')) return 'create'
     if (location.pathname.startsWith('/approvals')) return 'approvals'
+    if (location.pathname.startsWith('/admin')) return 'admin'
     if (location.pathname.startsWith('/profile')) return 'rights'
     return ''
   })()
@@ -131,10 +135,22 @@ export function LeftRail() {
         <RailButton key={it.key} item={it} active={activeKey === it.key} />
       ))}
       <div style={{ width: 28, height: 1, background: 'rgba(255,255,255,.12)', margin: '4px 0' }} />
-      <RailButton
-        item={{ key: 'settings', title: 'Settings', path: '/profile', icon: () => <SettingsIcon /> }}
-        active={false}
-      />
+      {isManager ? (
+        <RailButton
+          item={{
+            key: 'admin',
+            title: 'Rights administration',
+            path: '/admin',
+            icon: (a) => <SettingsIcon stroke={activeStroke(a)} />,
+          }}
+          active={activeKey === 'admin'}
+        />
+      ) : (
+        <RailButton
+          item={{ key: 'settings', title: 'Settings', path: '/profile', icon: () => <SettingsIcon /> }}
+          active={false}
+        />
+      )}
     </div>
   )
 }

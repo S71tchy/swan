@@ -1,11 +1,16 @@
 // Thin fetch wrapper. All calls go through the Vite proxy (/api -> :8000) so the
 // session cookie is same-origin. Swap BASE for a real host in production.
 import type {
+  AdminUserInput,
+  AdminUserRow,
   Alert,
   ApprovalQueue,
+  CountryRef,
   DashboardStats,
   ExternalVariant,
   Place,
+  ProfileInput,
+  ProfileRow,
   RoutingInfo,
   Taxonomy,
   UserMe,
@@ -86,4 +91,24 @@ export const api = {
 
   // approvals
   approvals: () => req<ApprovalQueue>('/approvals'),
+
+  // admin — rights & user administration (Rights Manager only)
+  adminCountries: () => req<CountryRef[]>('/admin/countries'),
+  adminUsers: () => req<AdminUserRow[]>('/admin/users'),
+  adminCreateUser: (body: AdminUserInput) =>
+    req<AdminUserRow>('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdateUser: (id: string, body: Partial<AdminUserInput>) =>
+    req<AdminUserRow>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminDeleteUser: (id: string) =>
+    req<void>(`/admin/users/${id}`, { method: 'DELETE' }),
+  adminProfiles: () => req<ProfileRow[]>('/admin/profiles'),
+  adminCreateProfile: (body: ProfileInput) =>
+    req<ProfileRow>('/admin/profiles', { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdateProfile: (name: string, body: Omit<ProfileInput, 'name'>) =>
+    req<ProfileRow>(`/admin/profiles/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  adminDeleteProfile: (name: string) =>
+    req<void>(`/admin/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 }

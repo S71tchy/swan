@@ -163,3 +163,69 @@ export interface ExternalVariant {
   title?: string
   description?: string
 }
+
+// --- Admin: rights & user administration ---
+export interface CountryRef {
+  code: string
+  name: string
+  flag: string
+}
+
+export interface ProfileRow {
+  name: string
+  countries: string[]
+  embeds_rights_manager: boolean
+  holders: number
+}
+
+export interface AdminUserRow {
+  id: string
+  email: string
+  name: string
+  initials: string
+  job_title: string
+  branch: string
+  role_label: string
+  home_country: string
+  home_country_name: string
+  phone: string
+  locale: string
+  timezone: string
+  avatar_gold: boolean
+  can_create: boolean
+  is_rights_manager: boolean
+  internal_pub_countries: string[]
+  external_pub_countries: string[]
+  client_scope: string[]
+  profiles: string[]
+  effective_internal: string[]
+  effective_external: string[]
+  is_effective_manager: boolean
+  alerts_authored: number
+}
+
+export interface AdminUserInput {
+  email: string
+  name: string
+  initials?: string
+  job_title?: string
+  branch?: string
+  role_label?: string
+  home_country?: string
+  phone?: string
+  locale?: string
+  timezone?: string
+  avatar_gold?: boolean
+  can_create?: boolean
+  is_rights_manager?: boolean
+  internal_pub_countries?: string[]
+  external_pub_countries?: string[]
+  client_scope?: string[]
+  profiles?: string[]
+}
+
+export interface ProfileInput {
+  name: string
+  countries?: string[]
+  embeds_rights_manager?: boolean
+}

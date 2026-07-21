@@ -200,3 +200,101 @@ class DevLoginRequest(BaseModel):
 
 class SessionInfo(BaseModel):
     user: UserPublic
+
+
+# --------------------------------------------------------------------------- #
+# Admin: rights & user administration (spec §4.4)
+# --------------------------------------------------------------------------- #
+class CountryRef(BaseModel):
+    code: str
+    name: str
+    flag: str
+
+
+class ProfileRow(BaseModel):
+    name: str
+    countries: list[str]
+    embeds_rights_manager: bool
+    holders: int          # how many users currently hold this profile
+
+
+class ProfileCreate(BaseModel):
+    name: str
+    countries: list[str] = Field(default_factory=list)
+    embeds_rights_manager: bool = False
+
+
+class ProfileUpdate(BaseModel):
+    countries: list[str] | None = None
+    embeds_rights_manager: bool | None = None
+
+
+class AdminUserRow(BaseModel):
+    """Full editable view of a user plus resolved (effective) rights so the
+    admin table can show reach without re-deriving it client-side."""
+
+    id: str
+    email: str
+    name: str
+    initials: str
+    job_title: str
+    branch: str
+    role_label: str
+    home_country: str
+    home_country_name: str
+    phone: str
+    locale: str
+    timezone: str
+    avatar_gold: bool
+    # --- raw grants (what the editor writes back) ---
+    can_create: bool
+    is_rights_manager: bool
+    internal_pub_countries: list[str]
+    external_pub_countries: list[str]
+    client_scope: list[str]
+    profiles: list[str]
+    # --- resolved (explicit ∪ profiles), for display only ---
+    effective_internal: list[str]
+    effective_external: list[str]
+    is_effective_manager: bool
+    alerts_authored: int
+
+
+class AdminUserCreate(BaseModel):
+    email: str
+    name: str
+    initials: str | None = None       # derived from name when omitted
+    job_title: str = ""
+    branch: str = ""
+    role_label: str = "Field Contributor"
+    home_country: str = ""
+    phone: str = ""
+    locale: str = "en"
+    timezone: str = "UTC"
+    avatar_gold: bool = False
+    can_create: bool = True
+    is_rights_manager: bool = False
+    internal_pub_countries: list[str] = Field(default_factory=list)
+    external_pub_countries: list[str] = Field(default_factory=list)
+    client_scope: list[str] = Field(default_factory=list)
+    profiles: list[str] = Field(default_factory=list)
+
+
+class AdminUserUpdate(BaseModel):
+    email: str | None = None
+    name: str | None = None
+    initials: str | None = None
+    job_title: str | None = None
+    branch: str | None = None
+    role_label: str | None = None
+    home_country: str | None = None
+    phone: str | None = None
+    locale: str | None = None
+    timezone: str | None = None
+    avatar_gold: bool | None = None
+    can_create: bool | None = None
+    is_rights_manager: bool | None = None
+    internal_pub_countries: list[str] | None = None
+    external_pub_countries: list[str] | None = None
+    client_scope: list[str] | None = None
+    profiles: list[str] | None = None

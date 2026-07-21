@@ -218,11 +218,17 @@ export default function Profile() {
 
         {/* rights column */}
         <Card className="scroll-y" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ font: '600 15px var(--font-display)', color: '#fff' }}>My rights</div>
-            <span style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(255,255,255,.06)', border: '1px solid var(--border-mid)', font: '400 11px var(--font-body)', color: 'var(--t-55)' }}>
-              {r.is_rights_manager ? 'Rights Manager — you may edit rights' : 'Read-only — contact a Rights Manager to change'}
-            </span>
+            {r.is_rights_manager ? (
+              <Button variant="outline" onClick={() => navigate('/admin')} style={{ height: 34, padding: '0 14px', font: '600 12px var(--font-display)' }}>
+                Manage users &amp; rights →
+              </Button>
+            ) : (
+              <span style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(255,255,255,.06)', border: '1px solid var(--border-mid)', font: '400 11px var(--font-body)', color: 'var(--t-55)' }}>
+                Read-only — contact a Rights Manager to change
+              </span>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
