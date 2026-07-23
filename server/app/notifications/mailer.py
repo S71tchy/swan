@@ -13,17 +13,20 @@ from app.config import settings
 log = logging.getLogger("swan.mail")
 
 
-def send_email(to: list[str] | str, subject: str, body: str) -> None:
+def send_email(to: list[str] | str, subject: str, html: str, text: str | None = None) -> None:
+    """Send a multipart/alternative email (plain-text + HTML). `text` falls back
+    to the HTML if not supplied (rare)."""
     recipients = [to] if isinstance(to, str) else list(to)
     recipients = [r for r in recipients if r]
     if not recipients:
         return
+    text = text or html
 
     if not settings.smtp_host:
         # Dev fallback: no SMTP configured — surface the email in the console.
         print(
             f"\n===== EMAIL (no SMTP configured) =====\n"
-            f"To: {', '.join(recipients)}\nSubject: {subject}\n\n{body}\n"
+            f"To: {', '.join(recipients)}\nSubject: {subject}\n\n{text}\n"
             f"===== end email =====\n",
             flush=True,
         )
@@ -37,7 +40,8 @@ def send_email(to: list[str] | str, subject: str, body: str) -> None:
         msg["Subject"] = subject
         msg["From"] = settings.smtp_from
         msg["To"] = ", ".join(recipients)
-        msg.set_content(body)
+        msg.set_content(text)                      # plain-text part
+        msg.add_alternative(html, subtype="html")  # HTML part
         sender = parseaddr(settings.smtp_from)[1] or settings.smtp_from
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as s:
             s.ehlo()

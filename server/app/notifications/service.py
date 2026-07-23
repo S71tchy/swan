@@ -42,19 +42,25 @@ def load_template(db: Session, key: str, locale: str) -> dict[str, str]:
     return default_template(key, locale)
 
 
-def _render_template(db: Session, key: str, locale: str, context: dict) -> tuple[str, str]:
+def _render_message(db: Session, key: str, locale: str, context: dict) -> tuple[str, str, str]:
+    """Return (subject, html, text): subject plain, body rendered to HTML and
+    wrapped in the branded shell, plus a plain-text alternative."""
     tpl = load_template(db, key, locale)
-    return render.render(tpl["subject"], context), render.render(tpl["body"], context)
+    subject = render.render(tpl["subject"], context)
+    inner = render.render_html(tpl["body"], context)
+    html = render.wrap_html(inner)
+    text = render.html_to_text(inner)
+    return subject, html, text
 
 
-def _dispatch(background: BackgroundTasks | None, to: list[str], subject: str, body: str) -> None:
+def _dispatch(background: BackgroundTasks | None, to: list[str], subject: str, html: str, text: str) -> None:
     to = [t for t in to if t]
     if not to:
         return
     if background is not None:
-        background.add_task(mailer.send_email, to, subject, body)
+        background.add_task(mailer.send_email, to, subject, html, text)
     else:
-        mailer.send_email(to, subject, body)
+        mailer.send_email(to, subject, html, text)
 
 
 # --------------------------------------------------------------------------- #
@@ -103,8 +109,8 @@ def notify_alert_broadcast(
     key = _BROADCAST_KEY[event]
     recipients = subscribers_for(db, event, alert, actor.id if actor else None)
     for u in recipients:
-        subject, body = _render_template(db, key, u.locale, render.alert_context(alert, u.name))
-        _dispatch(background, [u.email], subject, body)
+        subject, html, text = _render_message(db, key, u.locale, render.alert_context(alert, u.name))
+        _dispatch(background, [u.email], subject, html, text)
     return len(recipients)
 
 
@@ -112,8 +118,8 @@ def notify_submission_received(db: Session, background: BackgroundTasks | None, 
     u = alert.author
     if not u or not u.email:
         return
-    subject, body = _render_template(db, "submission_received", u.locale, render.alert_context(alert, u.name))
-    _dispatch(background, [u.email], subject, body)
+    subject, html, text = _render_message(db, "submission_received", u.locale, render.alert_context(alert, u.name))
+    _dispatch(background, [u.email], subject, html, text)
 
 
 def notify_alert_decision(
@@ -123,8 +129,8 @@ def notify_alert_decision(
     if not u or not u.email:
         return
     key = "alert_approved" if approved else "alert_rejected"
-    subject, body = _render_template(db, key, u.locale, render.alert_context(alert, u.name))
-    _dispatch(background, [u.email], subject, body)
+    subject, html, text = _render_message(db, key, u.locale, render.alert_context(alert, u.name))
+    _dispatch(background, [u.email], subject, html, text)
 
 
 def notify_user_registered(db: Session, background: BackgroundTasks | None, new_user: User) -> None:
@@ -139,21 +145,21 @@ def notify_user_registered(db: Session, background: BackgroundTasks | None, new_
             "new_user_email": new_user.email,
             **render.urls(),
         }
-        subject, body = _render_template(db, "user_registered", m.locale, ctx)
-        _dispatch(background, [m.email], subject, body)
+        subject, html, text = _render_message(db, "user_registered", m.locale, ctx)
+        _dispatch(background, [m.email], subject, html, text)
     # Acknowledge the registrant.
     if new_user.email:
         ctx = {"recipient_name": new_user.name, **render.urls()}
-        subject, body = _render_template(db, "registration_ack", new_user.locale, ctx)
-        _dispatch(background, [new_user.email], subject, body)
+        subject, html, text = _render_message(db, "registration_ack", new_user.locale, ctx)
+        _dispatch(background, [new_user.email], subject, html, text)
 
 
 def notify_account_activated(db: Session, background: BackgroundTasks | None, user: User) -> None:
     if not user.email:
         return
     ctx = {"recipient_name": user.name, "role": user.role_label, **render.urls()}
-    subject, body = _render_template(db, "account_activated", user.locale, ctx)
-    _dispatch(background, [user.email], subject, body)
+    subject, html, text = _render_message(db, "account_activated", user.locale, ctx)
+    _dispatch(background, [user.email], subject, html, text)
 
 
 # --------------------------------------------------------------------------- #
@@ -183,12 +189,15 @@ def sample_context(key: str) -> dict:
 
 
 def render_preview(db: Session, key: str, locale: str, subject: str, body: str) -> dict[str, str]:
-    """Render an in-flight (unsaved) subject/body against sample data."""
+    """Render an in-flight (unsaved) subject/HTML body against sample data,
+    returning the fully-shelled HTML for the editor's iframe preview."""
     ctx = sample_context(key)
-    return {"subject": render.render(subject, ctx), "body": render.render(body, ctx)}
+    inner = render.render_html(body, ctx)
+    return {"subject": render.render(subject, ctx), "body": render.wrap_html(inner)}
 
 
 def send_test(db: Session, background: BackgroundTasks | None, key: str, locale: str,
               subject: str, body: str, to_email: str) -> None:
     ctx = sample_context(key)
-    _dispatch(background, [to_email], render.render(subject, ctx), render.render(body, ctx))
+    inner = render.render_html(body, ctx)
+    _dispatch(background, [to_email], render.render(subject, ctx), render.wrap_html(inner), render.html_to_text(inner))

@@ -7,6 +7,7 @@ import { LeftRail } from '../components/LeftRail'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { Button } from '../components/ui'
 import { AdminGate } from '../components/adminUi'
+import { RichTextEditor, type RichTextHandle } from '../components/RichTextEditor'
 import type { TemplateEntry, TemplatePreview } from '../types'
 
 type Locale = 'en' | 'fr'
@@ -24,7 +25,10 @@ export default function NotificationTemplates() {
   const [preview, setPreview] = useState<TemplatePreview | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [sourceMode, setSourceMode] = useState(false)
+  const [epoch, setEpoch] = useState(0) // bump to remount the rich editor
   const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<RichTextHandle>(null)
   const focusRef = useRef<'subject' | 'body'>('body')
 
   const isManager = user?.rights.is_rights_manager
@@ -62,6 +66,10 @@ export default function NotificationTemplates() {
       setSubject((s) => s + snippet)
       return
     }
+    if (!sourceMode) {
+      editorRef.current?.insertToken(tok)
+      return
+    }
     const el = bodyRef.current
     if (el && el.selectionStart != null) {
       const start = el.selectionStart
@@ -96,6 +104,7 @@ export default function NotificationTemplates() {
       setTemplates((ts) => ts.map((t) => (t.key === updated.key ? updated : t)))
       setSubject(updated[locale].subject)
       setBody(updated[locale].body)
+      setEpoch((e) => e + 1)
       setMsg('Reset to default.')
     } catch {
       setMsg('Could not reset.')
@@ -215,10 +224,41 @@ export default function NotificationTemplates() {
                 <span style={{ font: '500 11px var(--font-body)', color: 'var(--t-55)' }}>Subject</span>
                 <input value={subject} onFocus={() => (focusRef.current = 'subject')} onChange={(e) => setSubject(e.target.value)} style={{ ...fieldStyle, marginTop: 6 }} />
               </label>
-              <label style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                <span style={{ font: '500 11px var(--font-body)', color: 'var(--t-55)' }}>Body</span>
-                <textarea ref={bodyRef} value={body} onFocus={() => (focusRef.current = 'body')} onChange={(e) => setBody(e.target.value)} rows={12} style={{ ...fieldStyle, marginTop: 6, resize: 'vertical', minHeight: 180, lineHeight: 1.5, fontFamily: 'var(--font-mono, monospace)' }} />
-              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                  <span style={{ font: '500 11px var(--font-body)', color: 'var(--t-55)' }}>Body</span>
+                  <div style={{ flex: 1 }} />
+                  <button
+                    onClick={() => {
+                      // switching back to rich needs a remount to load edits
+                      if (sourceMode) setEpoch((e) => e + 1)
+                      setSourceMode((v) => !v)
+                    }}
+                    style={{ font: '600 10.5px var(--font-display)', padding: '5px 10px', borderRadius: 7, cursor: 'pointer', border: '1px solid var(--border-soft)', background: 'rgba(255,255,255,.04)', color: 'var(--t-60)' }}
+                  >
+                    {sourceMode ? '◱ Rich text' : '</> HTML source'}
+                  </button>
+                </div>
+                {sourceMode ? (
+                  <textarea
+                    ref={bodyRef}
+                    value={body}
+                    onFocus={() => (focusRef.current = 'body')}
+                    onChange={(e) => setBody(e.target.value)}
+                    rows={14}
+                    spellCheck={false}
+                    style={{ ...fieldStyle, resize: 'vertical', minHeight: 220, lineHeight: 1.5, fontFamily: 'var(--font-mono, monospace)' }}
+                  />
+                ) : (
+                  <RichTextEditor
+                    key={`${selectedKey}:${locale}:${epoch}`}
+                    ref={editorRef}
+                    value={body}
+                    onChange={setBody}
+                    onFocusEditor={() => (focusRef.current = 'body')}
+                  />
+                )}
+              </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <Button variant="primary" disabled={busy || !dirty} onClick={save}>Save</Button>
@@ -236,9 +276,15 @@ export default function NotificationTemplates() {
 
               {preview && (
                 <div style={{ borderRadius: 12, border: '1px solid var(--border-soft)', background: 'rgba(0,0,0,.25)', padding: 16 }}>
-                  <div style={{ font: '500 10px var(--font-display)', letterSpacing: '.5px', textTransform: 'uppercase', color: 'var(--t-45)', marginBottom: 8 }}>Preview (sample data)</div>
-                  <div style={{ font: '600 13px var(--font-body)', color: '#fff', marginBottom: 8 }}>{preview.subject}</div>
-                  <pre style={{ font: '400 12px/1.55 var(--font-mono, monospace)', color: 'var(--t-75)', whiteSpace: 'pre-wrap', margin: 0 }}>{preview.body}</pre>
+                  <div style={{ font: '500 10px var(--font-display)', letterSpacing: '.5px', textTransform: 'uppercase', color: 'var(--t-45)', marginBottom: 8 }}>Preview — rendered with sample data</div>
+                  <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-50)', marginBottom: 4 }}>Subject</div>
+                  <div style={{ font: '600 13px var(--font-body)', color: '#fff', marginBottom: 12 }}>{preview.subject}</div>
+                  <iframe
+                    title="Email preview"
+                    sandbox=""
+                    srcDoc={preview.body}
+                    style={{ width: '100%', height: 440, border: '1px solid var(--border-soft)', borderRadius: 8, background: '#fff' }}
+                  />
                 </div>
               )}
             </div>

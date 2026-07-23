@@ -78,150 +78,149 @@ CATALOG: list[dict] = [
 CATALOG_BY_KEY = {t["key"]: t for t in CATALOG}
 
 
-def _alert_body_en(closing: str) -> str:
+def _alert_html(lang: str, intro: str, cta_label: str, cta_token: str = "alert_url") -> str:
+    """Shared HTML body for the alert-centric templates. `intro` is a full HTML
+    sentence; `cta_token` is the URL token the button links to."""
+    if lang == "fr":
+        hi = "Bonjour {{recipient_name}},"
+        loc_l, val_l, auth_l, imp, act = "Lieux :", "Validité :", "Auteur :", "Impact", "Plan d'action"
+    else:
+        hi = "Hi {{recipient_name}},"
+        loc_l, val_l, auth_l, imp, act = "Locations:", "Valid:", "Author:", "Impact", "Action plan"
+    cta = '<a class="btn" href="{{' + cta_token + '}}">' + cta_label + "</a>"
+    grey = '<span style="color:#6b7688;">'
     return (
-        "Hi {{recipient_name}},\n\n"
-        "{{title}}\n"
-        "Severity: {{severity}}  ·  Category: {{category}} / {{sub_category}}\n"
-        "Locations: {{locations}}\n"
-        "Valid: {{valid_from}} → {{valid_to}}\n"
-        "Author: {{author}}\n\n"
-        "Impact\n{{impact}}\n\n"
-        "Action plan\n{{action_plan}}\n\n"
-        f"{closing}\n{{{{alert_url}}}}\n\n— SWAN"
+        "<p>" + hi + "</p>"
+        "<h2>{{title}}</h2>"
+        "<p><strong>{{severity}}</strong> &middot; {{category}} / {{sub_category}}<br>"
+        + grey + loc_l + "</span> {{locations}}<br>"
+        + grey + val_l + "</span> {{valid_from}} &rarr; {{valid_to}}<br>"
+        + grey + auth_l + "</span> {{author}}</p>"
+        "<p>" + intro + "</p>"
+        "<h3>" + imp + "</h3><p>{{impact}}</p>"
+        "<h3>" + act + "</h3><p>{{action_plan}}</p>"
+        "<p>" + cta + "</p>"
     )
 
 
-def _alert_body_fr(closing: str) -> str:
-    return (
-        "Bonjour {{recipient_name}},\n\n"
-        "{{title}}\n"
-        "Gravité : {{severity}}  ·  Catégorie : {{category}} / {{sub_category}}\n"
-        "Lieux : {{locations}}\n"
-        "Validité : {{valid_from}} → {{valid_to}}\n"
-        "Auteur : {{author}}\n\n"
-        "Impact\n{{impact}}\n\n"
-        "Plan d'action\n{{action_plan}}\n\n"
-        f"{closing}\n{{{{alert_url}}}}\n\n— SWAN"
-    )
-
-
-# (key, locale) -> {subject, body}
+# (key, locale) -> {subject, body(HTML)}
 DEFAULTS: dict[tuple[str, str], dict[str, str]] = {
     ("alert_published", "en"): {
         "subject": "[SWAN] {{severity}} · {{title}}",
-        "body": _alert_body_en("View on the network map:"),
+        "body": _alert_html("en", "This alert is now live on the network map.", "View on the map"),
     },
     ("alert_published", "fr"): {
         "subject": "[SWAN] {{severity}} · {{title}}",
-        "body": _alert_body_fr("Voir sur la carte du réseau :"),
+        "body": _alert_html("fr", "Cette alerte est désormais active sur la carte du réseau.", "Voir sur la carte"),
     },
     ("alert_closed", "en"): {
         "subject": "[SWAN] Closed · {{title}}",
-        "body": _alert_body_en("This alert has been closed and removed from the map:"),
+        "body": _alert_html("en", "This alert has been <strong>closed</strong> and removed from the map.", "View on the map"),
     },
     ("alert_closed", "fr"): {
         "subject": "[SWAN] Clôturée · {{title}}",
-        "body": _alert_body_fr("Cette alerte a été clôturée et retirée de la carte :"),
+        "body": _alert_html("fr", "Cette alerte a été <strong>clôturée</strong> et retirée de la carte.", "Voir sur la carte"),
     },
     ("alert_submitted", "en"): {
         "subject": "[SWAN] Awaiting approval · {{title}}",
-        "body": _alert_body_en("An alert in your zone needs review in the approval queue:").replace(
-            "{{alert_url}}", "{{approvals_url}}"
-        ),
+        "body": _alert_html("en", "An alert in your zone is awaiting review in the approval queue.", "Open the approval queue", "approvals_url"),
     },
     ("alert_submitted", "fr"): {
         "subject": "[SWAN] En attente d'approbation · {{title}}",
-        "body": _alert_body_fr("Une alerte de votre zone attend une revue dans la file d'approbation :").replace(
-            "{{alert_url}}", "{{approvals_url}}"
-        ),
+        "body": _alert_html("fr", "Une alerte de votre zone attend une revue dans la file d'approbation.", "Ouvrir la file d'approbation", "approvals_url"),
     },
     ("submission_received", "en"): {
         "subject": "[SWAN] Submitted for approval · {{title}}",
-        "body": _alert_body_en("Your alert was submitted and is now awaiting a publisher's approval:"),
+        "body": _alert_html("en", "Your alert was submitted and is now awaiting a publisher's approval.", "View your alert"),
     },
     ("submission_received", "fr"): {
         "subject": "[SWAN] Soumise pour approbation · {{title}}",
-        "body": _alert_body_fr("Votre alerte a été soumise et attend l'approbation d'un publieur :"),
+        "body": _alert_html("fr", "Votre alerte a été soumise et attend l'approbation d'un publieur.", "Voir votre alerte"),
     },
     ("alert_approved", "en"): {
         "subject": "[SWAN] Published · {{title}}",
-        "body": _alert_body_en("Good news — your alert was approved and is now published:"),
+        "body": _alert_html("en", "Good news — your alert was <strong>approved</strong> and is now published.", "View on the map"),
     },
     ("alert_approved", "fr"): {
         "subject": "[SWAN] Publiée · {{title}}",
-        "body": _alert_body_fr("Bonne nouvelle — votre alerte a été approuvée et est publiée :"),
+        "body": _alert_html("fr", "Bonne nouvelle — votre alerte a été <strong>approuvée</strong> et est publiée.", "Voir sur la carte"),
     },
     ("alert_rejected", "en"): {
         "subject": "[SWAN] Changes requested · {{title}}",
         "body": (
-            "Hi {{recipient_name}},\n\n"
-            "Your alert \"{{title}}\" was returned for changes.\n\n"
-            "Reviewer comment\n{{comment}}\n\n"
-            "It's editable again as a draft — update and resubmit:\n{{alert_url}}\n\n— SWAN"
+            "<p>Hi {{recipient_name}},</p>"
+            "<p>Your alert <strong>“{{title}}”</strong> was returned for changes.</p>"
+            "<h3>Reviewer comment</h3><blockquote>{{comment}}</blockquote>"
+            "<p>It's editable again as a draft — update and resubmit.</p>"
+            '<p><a class="btn" href="{{alert_url}}">Edit your draft</a></p>'
         ),
     },
     ("alert_rejected", "fr"): {
         "subject": "[SWAN] Modifications demandées · {{title}}",
         "body": (
-            "Bonjour {{recipient_name}},\n\n"
-            "Votre alerte « {{title}} » a été renvoyée pour modification.\n\n"
-            "Commentaire du relecteur\n{{comment}}\n\n"
-            "Elle est de nouveau modifiable en brouillon — corrigez et resoumettez :\n{{alert_url}}\n\n— SWAN"
+            "<p>Bonjour {{recipient_name}},</p>"
+            "<p>Votre alerte <strong>«&nbsp;{{title}}&nbsp;»</strong> a été renvoyée pour modification.</p>"
+            "<h3>Commentaire du relecteur</h3><blockquote>{{comment}}</blockquote>"
+            "<p>Elle est de nouveau modifiable en brouillon — corrigez et resoumettez.</p>"
+            '<p><a class="btn" href="{{alert_url}}">Modifier le brouillon</a></p>'
         ),
     },
     ("user_registered", "en"): {
         "subject": "[SWAN] New account awaiting validation · {{new_user_name}}",
         "body": (
-            "Hi {{recipient_name}},\n\n"
-            "A new account has self-registered and needs review:\n\n"
-            "  Name: {{new_user_name}}\n  Email: {{new_user_email}}\n\n"
-            "It currently has no rights. Configure and validate it in Rights administration:\n"
-            "{{admin_url}}\n\n— SWAN"
+            "<p>Hi {{recipient_name}},</p>"
+            "<p>A new account has self-registered and needs review:</p>"
+            "<p><strong>{{new_user_name}}</strong><br>"
+            '<span style="color:#6b7688;">{{new_user_email}}</span></p>'
+            "<p>It currently has <strong>no rights</strong>. Configure and validate it in Rights administration.</p>"
+            '<p><a class="btn" href="{{admin_url}}">Review the account</a></p>'
         ),
     },
     ("user_registered", "fr"): {
         "subject": "[SWAN] Nouveau compte à valider · {{new_user_name}}",
         "body": (
-            "Bonjour {{recipient_name}},\n\n"
-            "Un nouveau compte s'est enregistré et attend une revue :\n\n"
-            "  Nom : {{new_user_name}}\n  E-mail : {{new_user_email}}\n\n"
-            "Il n'a aucun droit pour l'instant. Configurez-le et validez-le dans l'administration des droits :\n"
-            "{{admin_url}}\n\n— SWAN"
+            "<p>Bonjour {{recipient_name}},</p>"
+            "<p>Un nouveau compte s'est enregistré et attend une revue :</p>"
+            "<p><strong>{{new_user_name}}</strong><br>"
+            '<span style="color:#6b7688;">{{new_user_email}}</span></p>'
+            "<p>Il n'a <strong>aucun droit</strong> pour l'instant. Configurez-le et validez-le dans l'administration des droits.</p>"
+            '<p><a class="btn" href="{{admin_url}}">Examiner le compte</a></p>'
         ),
     },
     ("registration_ack", "en"): {
         "subject": "[SWAN] Welcome — your account is pending validation",
         "body": (
-            "Hi {{recipient_name}},\n\n"
-            "Thanks for registering for SWAN. Your account has been created and is "
-            "awaiting validation by a Rights Manager. You'll receive an email once it's "
-            "activated and you can start using the platform.\n\n{{app_url}}\n\n— SWAN"
+            "<p>Hi {{recipient_name}},</p>"
+            "<p>Thanks for registering for SWAN. Your account has been created and is "
+            "awaiting validation by a Rights Manager.</p>"
+            "<p>You'll receive an email once it's activated and you can start using the platform.</p>"
         ),
     },
     ("registration_ack", "fr"): {
         "subject": "[SWAN] Bienvenue — votre compte est en attente de validation",
         "body": (
-            "Bonjour {{recipient_name}},\n\n"
-            "Merci de votre inscription à SWAN. Votre compte a été créé et attend la "
-            "validation d'un gestionnaire des droits. Vous recevrez un e-mail dès qu'il "
-            "sera activé et que vous pourrez utiliser la plateforme.\n\n{{app_url}}\n\n— SWAN"
+            "<p>Bonjour {{recipient_name}},</p>"
+            "<p>Merci de votre inscription à SWAN. Votre compte a été créé et attend la "
+            "validation d'un gestionnaire des droits.</p>"
+            "<p>Vous recevrez un e-mail dès qu'il sera activé et que vous pourrez utiliser la plateforme.</p>"
         ),
     },
     ("account_activated", "en"): {
         "subject": "[SWAN] Your account is now active",
         "body": (
-            "Hi {{recipient_name}},\n\n"
-            "Your SWAN account has been validated and is now active"
-            " (role: {{role}}). You can sign in here:\n{{login_url}}\n\n— SWAN"
+            "<p>Hi {{recipient_name}},</p>"
+            "<p>Your SWAN account has been validated and is now <strong>active</strong> "
+            "(role: {{role}}). You can sign in now.</p>"
+            '<p><a class="btn" href="{{login_url}}">Sign in to SWAN</a></p>'
         ),
     },
     ("account_activated", "fr"): {
         "subject": "[SWAN] Votre compte est désormais actif",
         "body": (
-            "Bonjour {{recipient_name}},\n\n"
-            "Votre compte SWAN a été validé et est désormais actif"
-            " (rôle : {{role}}). Connectez-vous ici :\n{{login_url}}\n\n— SWAN"
+            "<p>Bonjour {{recipient_name}},</p>"
+            "<p>Votre compte SWAN a été validé et est désormais <strong>actif</strong> "
+            "(rôle : {{role}}). Vous pouvez vous connecter.</p>"
+            '<p><a class="btn" href="{{login_url}}">Se connecter à SWAN</a></p>'
         ),
     },
 }
