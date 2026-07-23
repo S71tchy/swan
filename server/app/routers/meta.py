@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.database import get_db
 from app.deps import get_current_user
-from app.enums import CATEGORIES, INDUSTRIES, Flow, Severity, TransportMode
+from app.enums import CATEGORIES, INDUSTRIES, ROLES, Flow, Severity, TransportMode
 from app.models import Alert, Place, User
 from app.reference import COUNTRY_CATALOGUE, STANDARD_PROFILES, country_meta
 from app.rights import pending_alerts_in_perimeter
@@ -25,6 +25,7 @@ def taxonomy():
         "flows": [f.value for f in Flow],
         "severities": [s.value for s in Severity],
         "profiles": list(STANDARD_PROFILES.keys()),
+        "roles": ROLES,
     }
 
 

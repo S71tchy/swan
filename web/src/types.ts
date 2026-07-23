@@ -157,6 +157,7 @@ export interface Taxonomy {
   flows: Flow[]
   severities: Severity[]
   profiles: string[]
+  roles: string[]
 }
 
 export interface ApprovalQueue {

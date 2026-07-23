@@ -64,3 +64,15 @@ INDUSTRIES = [
     "Automotive",
     "Project Cargo",
 ]
+
+# Assignable user roles (spec §3 personas, Phase-1 relevant). Roles are display
+# labels — effective permissions come from the rights model (§4), not the role —
+# but the admin picks from this canonical list rather than free-typing, so a
+# just-validated account gets a real role. Phase 2/3 personas (Network
+# Intelligence Analyst, Client User) are added when those phases land.
+ROLES = [
+    "Field Contributor",
+    "Country/Region Publisher",
+    "Executive Viewer",
+    "Rights Manager",
+]

@@ -12,13 +12,6 @@ import { CountryFlag } from '../components/CountryFlag'
 import { Drawer, Field, inputStyle, AdminGate } from '../components/adminUi'
 import type { AdminUserRow, CountryRef, ProfileRow } from '../types'
 
-const ROLE_SUGGESTIONS = [
-  'Field Contributor',
-  'Country/Region Publisher',
-  'Rights Manager',
-  'Rights Administrator',
-]
-
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <div
@@ -247,6 +240,7 @@ function UserEditor({
   isNew,
   countries,
   profiles,
+  roles,
   editingSelf,
   hasPassword,
   onClose,
@@ -257,6 +251,7 @@ function UserEditor({
   isNew: boolean
   countries: CountryRef[]
   profiles: ProfileRow[]
+  roles: string[]
   editingSelf: boolean
   hasPassword: boolean
   userId?: string
@@ -373,18 +368,21 @@ function UserEditor({
           <Field label="Branch">
             <input style={inputStyle} value={form.branch} onChange={(e) => set('branch', e.target.value)} />
           </Field>
-          <Field label="Role label">
-            <input
-              style={inputStyle}
-              list="role-suggestions"
-              value={form.role_label}
+          <Field label="Role">
+            <select
+              style={{ ...inputStyle, appearance: 'none' }}
+              value={roles.includes(form.role_label) ? form.role_label : ''}
               onChange={(e) => set('role_label', e.target.value)}
-            />
-            <datalist id="role-suggestions">
-              {ROLE_SUGGESTIONS.map((r) => (
-                <option key={r} value={r} />
+            >
+              <option value="" disabled>
+                — Select a role —
+              </option>
+              {roles.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
               ))}
-            </datalist>
+            </select>
           </Field>
           <Field label="Home country">
             <select
@@ -663,6 +661,7 @@ export default function RightsAdmin() {
   const [tab, setTab] = useState<Tab>('users')
   const [onlyPending, setOnlyPending] = useState(false)
   const [countries, setCountries] = useState<CountryRef[]>([])
+  const [roles, setRoles] = useState<string[]>([])
   const [users, setUsers] = useState<AdminUserRow[]>([])
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
   const [editUser, setEditUser] = useState<{ form: UserForm; id?: string; hasPassword?: boolean } | null>(null)
@@ -682,6 +681,7 @@ export default function RightsAdmin() {
   useEffect(() => {
     if (!isManager) return
     void api.adminCountries().then(setCountries).catch(() => setCountries([]))
+    void api.taxonomy().then((t) => setRoles(t.roles)).catch(() => setRoles([]))
     void reload()
   }, [isManager])
 
@@ -1046,6 +1046,7 @@ export default function RightsAdmin() {
           userId={editUser.id}
           countries={countries}
           profiles={profiles}
+          roles={roles}
           editingSelf={editUser.id === user.id}
           hasPassword={editUser.hasPassword ?? false}
           onClose={() => setEditUser(null)}
