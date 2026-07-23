@@ -76,3 +76,21 @@ ROLES = [
     "Executive Viewer",
     "Rights Manager",
 ]
+
+# Subscription-driven broadcast events a user can subscribe to (spec §4.5).
+# Direct transactional emails (submission-received, approval decision,
+# registration, activation) are NOT subscription-filtered — they always go to a
+# specific person — so they are not in this list.
+NOTIFICATION_EVENTS = ["published", "closed", "submitted"]
+
+# Severity ordering for the "min criticality" subscription threshold.
+SEVERITY_ORDER = ["info", "watch", "warning", "critical"]
+
+
+def severity_at_least(severity: str, threshold: str) -> bool:
+    """True if `severity` is at or above `threshold` on the SEVERITY_ORDER ramp.
+    Unknown values fail open (match) so a bad value never silently drops mail."""
+    try:
+        return SEVERITY_ORDER.index(severity) >= SEVERITY_ORDER.index(threshold)
+    except ValueError:
+        return True

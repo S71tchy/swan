@@ -43,11 +43,33 @@ class PerimeterRow(BaseModel):
     external: bool
 
 
-class NotificationRules(BaseModel):
-    published: bool
-    published_area: str
-    submitted: bool
-    submitted_area: str
+class SubscriptionBase(BaseModel):
+    name: str = ""
+    active: bool = True
+    events: list[str] = Field(default_factory=list)      # ⊆ published/closed/submitted
+    countries: list[str] = Field(default_factory=list)   # ISO2 (zone)
+    profiles: list[str] = Field(default_factory=list)    # profile names (zone)
+    categories: list[str] = Field(default_factory=list)  # alert categories (type)
+    min_severity: str = "info"                           # criticality threshold
+
+
+class SubscriptionOut(SubscriptionBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+
+
+class SubscriptionCreate(SubscriptionBase):
+    pass
+
+
+class SubscriptionUpdate(BaseModel):
+    name: str | None = None
+    active: bool | None = None
+    events: list[str] | None = None
+    countries: list[str] | None = None
+    profiles: list[str] | None = None
+    categories: list[str] | None = None
+    min_severity: str | None = None
 
 
 class UserPublic(BaseModel):
@@ -86,7 +108,7 @@ class UserStats(BaseModel):
 
 class UserMe(UserPublic):
     rights: RightsSummary
-    notifications: NotificationRules
+    subscriptions: list[SubscriptionOut]
     perimeter: list[PerimeterRow]
     stats: UserStats
 
@@ -351,3 +373,43 @@ class PlaceUpdate(BaseModel):
     lat: float | None = None
     lng: float | None = None
     aliases: list[str] | None = None
+
+
+# --------------------------------------------------------------------------- #
+# Email templates (admin editor)
+# --------------------------------------------------------------------------- #
+class TemplateLocaleData(BaseModel):
+    subject: str
+    body: str
+    overridden: bool     # True if a DB override exists (else showing code default)
+
+
+class TemplateEntry(BaseModel):
+    key: str
+    label: str
+    description: str
+    kind: str            # "broadcast" | "transactional"
+    tokens: list[str]
+    en: TemplateLocaleData
+    fr: TemplateLocaleData
+
+
+class TemplateUpdate(BaseModel):
+    subject: str
+    body: str
+
+
+class TemplatePreviewRequest(BaseModel):
+    subject: str
+    body: str
+
+
+class TemplatePreviewOut(BaseModel):
+    subject: str
+    body: str
+
+
+class TemplateTestRequest(BaseModel):
+    subject: str
+    body: str
+    to: str | None = None   # defaults to the requesting manager's email

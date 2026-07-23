@@ -15,7 +15,11 @@ import type {
   ProfileRow,
   RegisterInput,
   RoutingInfo,
+  Subscription,
+  SubscriptionInput,
   Taxonomy,
+  TemplateEntry,
+  TemplatePreview,
   UserMe,
   UserPublic,
 } from './types'
@@ -68,11 +72,13 @@ export const api = {
 
   // me
   me: () => req<UserMe>('/users/me'),
-  updateNotifications: (body: UserMe['notifications']) =>
-    req<UserMe['notifications']>('/users/me/notifications', {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
+  // notification subscriptions (self-service)
+  createSubscription: (body: SubscriptionInput) =>
+    req<Subscription>('/users/me/subscriptions', { method: 'POST', body: JSON.stringify(body) }),
+  updateSubscription: (id: string, body: Partial<SubscriptionInput>) =>
+    req<Subscription>(`/users/me/subscriptions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteSubscription: (id: string) =>
+    req<void>(`/users/me/subscriptions/${id}`, { method: 'DELETE' }),
 
   // dashboard + meta
   dashboard: () => req<DashboardStats>('/dashboard/stats'),
@@ -132,4 +138,25 @@ export const api = {
     }),
   adminDeletePlace: (code: string) =>
     req<void>(`/admin/places/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+
+  // admin — a user's notification subscriptions
+  adminUserSubscriptions: (userId: string) =>
+    req<Subscription[]>(`/admin/users/${userId}/subscriptions`),
+  adminCreateUserSubscription: (userId: string, body: SubscriptionInput) =>
+    req<Subscription>(`/admin/users/${userId}/subscriptions`, { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdateUserSubscription: (userId: string, subId: string, body: Partial<SubscriptionInput>) =>
+    req<Subscription>(`/admin/users/${userId}/subscriptions/${subId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminDeleteUserSubscription: (userId: string, subId: string) =>
+    req<void>(`/admin/users/${userId}/subscriptions/${subId}`, { method: 'DELETE' }),
+
+  // admin — email templates
+  adminTemplates: () => req<TemplateEntry[]>('/admin/templates'),
+  adminUpdateTemplate: (key: string, locale: string, body: { subject: string; body: string }) =>
+    req<TemplateEntry>(`/admin/templates/${key}/${locale}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminResetTemplate: (key: string, locale: string) =>
+    req<TemplateEntry>(`/admin/templates/${key}/${locale}`, { method: 'DELETE' }),
+  adminPreviewTemplate: (key: string, locale: string, body: { subject: string; body: string }) =>
+    req<TemplatePreview>(`/admin/templates/${key}/${locale}/preview`, { method: 'POST', body: JSON.stringify(body) }),
+  adminTestTemplate: (key: string, locale: string, body: { subject: string; body: string; to?: string }) =>
+    req<{ sent_to: string }>(`/admin/templates/${key}/${locale}/test`, { method: 'POST', body: JSON.stringify(body) }),
 }

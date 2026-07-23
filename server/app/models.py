@@ -88,15 +88,12 @@ class User(Base):
     # Held profile names (resolved against Profile.countries)
     profiles: Mapped[list] = mapped_column(JSON, default=list)
 
-    # --- Notification subscriptions (spec §4.5) ---
-    notify_published: Mapped[bool] = mapped_column(Boolean, default=True)
-    notify_published_area: Mapped[str] = mapped_column(String, default="")
-    notify_submitted: Mapped[bool] = mapped_column(Boolean, default=False)
-    notify_submitted_area: Mapped[str] = mapped_column(String, default="")
-
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     alerts: Mapped[list[Alert]] = relationship(back_populates="author")
+    subscriptions: Mapped[list[NotificationSubscription]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Alert(Base):
@@ -142,6 +139,47 @@ class Alert(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class NotificationSubscription(Base):
+    """A user's named email-subscription rule (spec §4.5, extended).
+
+    A subscription fires for a broadcast event (published/closed/submitted) when
+    the alert matches ALL set filters: zone (countries ∪ profile-countries),
+    type (categories) and criticality (severity ≥ min_severity). An empty filter
+    means "any". The subscribing user is never emailed about their own action."""
+
+    __tablename__ = "notification_subscriptions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    events: Mapped[list] = mapped_column(JSON, default=list)       # ⊆ NOTIFICATION_EVENTS
+    countries: Mapped[list] = mapped_column(JSON, default=list)    # ISO2 (zone)
+    profiles: Mapped[list] = mapped_column(JSON, default=list)     # profile names (zone)
+    categories: Mapped[list] = mapped_column(JSON, default=list)   # alert categories (type)
+    min_severity: Mapped[str] = mapped_column(String, default="info")  # criticality threshold
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    user: Mapped[User] = relationship(back_populates="subscriptions")
+
+
+class EmailTemplate(Base):
+    """DB override for a notification template, keyed by (template key, locale).
+
+    Code holds the default copy for every key/locale (see app.notifications.
+    templates); a row here overrides it. Editing happens in the admin Templates
+    screen. Body/subject use `{{token}}` placeholders."""
+
+    __tablename__ = "email_templates"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    locale: Mapped[str] = mapped_column(String, primary_key=True)  # "en" | "fr"
+    subject: Mapped[str] = mapped_column(String, default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class AuditLog(Base):

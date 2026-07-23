@@ -10,7 +10,8 @@ import { Button, SectionLabel } from '../components/ui'
 import { PlusIcon } from '../components/icons'
 import { CountryFlag } from '../components/CountryFlag'
 import { Drawer, Field, inputStyle, AdminGate } from '../components/adminUi'
-import type { AdminUserRow, CountryRef, ProfileRow } from '../types'
+import { SubscriptionEditor } from '../components/SubscriptionEditor'
+import type { AdminUserRow, CountryRef, ProfileRow, Subscription } from '../types'
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -241,8 +242,10 @@ function UserEditor({
   countries,
   profiles,
   roles,
+  categories,
   editingSelf,
   hasPassword,
+  userId,
   onClose,
   onSaved,
   onDeleted,
@@ -252,6 +255,7 @@ function UserEditor({
   countries: CountryRef[]
   profiles: ProfileRow[]
   roles: string[]
+  categories: string[]
   editingSelf: boolean
   hasPassword: boolean
   userId?: string
@@ -262,6 +266,14 @@ function UserEditor({
   const [form, setForm] = useState<UserForm>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [subs, setSubs] = useState<Subscription[]>([])
+
+  useEffect(() => {
+    if (userId) void api.adminUserSubscriptions(userId).then(setSubs).catch(() => setSubs([]))
+  }, [userId])
+  async function reloadSubs() {
+    if (userId) setSubs(await api.adminUserSubscriptions(userId))
+  }
 
   function set<K extends keyof UserForm>(key: K, value: UserForm[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -491,6 +503,30 @@ function UserEditor({
           <CountryPicker countries={countries} selected={form.client_scope} onToggle={(c) => toggleIn('client_scope', c)} />
         </div>
 
+        {userId && (
+          <>
+            <div style={{ height: 1, background: 'rgba(255,255,255,.08)' }} />
+            <div>
+              <SectionLabel>Email subscriptions</SectionLabel>
+              <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)', margin: '4px 0 12px' }}>
+                What this user is emailed about — by event, zone, type and criticality.
+              </div>
+              <SubscriptionEditor
+                subscriptions={subs}
+                countries={countries}
+                profiles={profiles.map((p) => p.name)}
+                categories={categories}
+                handlers={{
+                  create: (b) => api.adminCreateUserSubscription(userId, b),
+                  update: (id, b) => api.adminUpdateUserSubscription(userId, id, b),
+                  remove: (id) => api.adminDeleteUserSubscription(userId, id),
+                }}
+                onChanged={reloadSubs}
+              />
+            </div>
+          </>
+        )}
+
         {error && (
           <div
             style={{
@@ -662,6 +698,7 @@ export default function RightsAdmin() {
   const [onlyPending, setOnlyPending] = useState(false)
   const [countries, setCountries] = useState<CountryRef[]>([])
   const [roles, setRoles] = useState<string[]>([])
+  const [categories, setCategories] = useState<string[]>([])
   const [users, setUsers] = useState<AdminUserRow[]>([])
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
   const [editUser, setEditUser] = useState<{ form: UserForm; id?: string; hasPassword?: boolean } | null>(null)
@@ -681,7 +718,10 @@ export default function RightsAdmin() {
   useEffect(() => {
     if (!isManager) return
     void api.adminCountries().then(setCountries).catch(() => setCountries([]))
-    void api.taxonomy().then((t) => setRoles(t.roles)).catch(() => setRoles([]))
+    void api.taxonomy().then((t) => {
+      setRoles(t.roles)
+      setCategories(Object.keys(t.categories))
+    }).catch(() => setRoles([]))
     void reload()
   }, [isManager])
 
@@ -810,6 +850,22 @@ export default function RightsAdmin() {
             }}
           >
             Master data →
+          </button>
+          <button
+            onClick={() => navigate('/admin/templates')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              borderRadius: 10,
+              border: '1px solid var(--border-soft)',
+              background: 'rgba(255,255,255,.05)',
+              color: 'var(--t-70)',
+              font: '600 12px var(--font-display)',
+            }}
+          >
+            Templates →
           </button>
           <div
             style={{
@@ -1047,6 +1103,7 @@ export default function RightsAdmin() {
           countries={countries}
           profiles={profiles}
           roles={roles}
+          categories={categories}
           editingSelf={editUser.id === user.id}
           hasPassword={editUser.hasPassword ?? false}
           onClose={() => setEditUser(null)}

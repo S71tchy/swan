@@ -6,13 +6,14 @@ user without a real IdP round-trip. The seam for real OIDC is isolated here —
 `/auth/callback` that exchanges the code, then mints the identical session
 cookie. Nothing downstream changes.
 """
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import User
+from app.notifications import service as notify
 from app.schemas import DevLoginRequest, PasswordLoginRequest, RegisterRequest, UserPublic
 from app.security import COOKIE_NAME, create_session_token, hash_password, verify_password
 
@@ -79,7 +80,12 @@ def password_login(body: PasswordLoginRequest, response: Response, db: Session =
 
 
 @router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+def register(
+    body: RegisterRequest,
+    response: Response,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Self-service registration from the login screen.
 
     Creates a **zero-rights** account (no creation, no publication, no profiles,
@@ -114,12 +120,12 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
         external_pub_countries=[],
         client_scope=[],
         profiles=[],
-        notify_published=False,
-        notify_submitted=False,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    # Notify all Rights Managers there's an account to validate; ack the registrant.
+    notify.notify_user_registered(db, background, user)
     _set_session_cookie(response, user)
     return UserPublic.model_validate(user)
 

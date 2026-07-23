@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { TopBar } from '../components/TopBar'
@@ -6,10 +6,11 @@ import { LeftRail } from '../components/LeftRail'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { Avatar } from '../components/Avatar'
 import { CountryFlag } from '../components/CountryFlag'
+import { SubscriptionEditor } from '../components/SubscriptionEditor'
 import { Button, SectionLabel } from '../components/ui'
 import { api } from '../api'
 import { fmtAgo } from '../lib/format'
-import type { NotificationRules } from '../types'
+import type { CountryRef } from '../types'
 
 function Card({
   children,
@@ -37,37 +38,6 @@ function Card({
   )
 }
 
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        width: 40,
-        height: 22,
-        borderRadius: 11,
-        background: on ? 'var(--agl-yellow)' : 'rgba(255,255,255,.15)',
-        position: 'relative',
-        cursor: 'pointer',
-        transition: 'background .15s',
-        flex: 'none',
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          top: 2,
-          left: on ? 20 : 2,
-          width: 18,
-          height: 18,
-          borderRadius: '50%',
-          background: on ? 'var(--agl-navy)' : 'rgba(255,255,255,.6)',
-          transition: 'left .15s',
-        }}
-      />
-    </div>
-  )
-}
-
 const rightsDot = (color: string) => (
   <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flex: 'none' }} />
 )
@@ -75,16 +45,19 @@ const rightsDot = (color: string) => (
 export default function Profile() {
   const { user, refresh, logout } = useAuth()
   const navigate = useNavigate()
-  const [notif, setNotif] = useState<NotificationRules | null>(user?.notifications ?? null)
+  const [countries, setCountries] = useState<CountryRef[]>([])
+  const [profiles, setProfiles] = useState<string[]>([])
+  const [categories, setCategories] = useState<string[]>([])
+
+  useEffect(() => {
+    void api.countries().then(setCountries).catch(() => setCountries([]))
+    void api.taxonomy().then((t) => {
+      setProfiles(t.profiles)
+      setCategories(Object.keys(t.categories))
+    }).catch(() => {})
+  }, [])
 
   if (!user) return null
-  const n = notif ?? user.notifications
-
-  async function saveNotif(next: NotificationRules) {
-    setNotif(next)
-    await api.updateNotifications(next)
-    await refresh()
-  }
 
   async function handleSignOut() {
     await logout()
@@ -195,25 +168,24 @@ export default function Profile() {
           </Card>
 
           <Card style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <SectionLabel>Email notifications</SectionLabel>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ font: '600 12.5px var(--font-body)', color: '#fff' }}>Published &amp; closed alerts</div>
-                <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)' }}>
-                  {n.published_area || 'No area set'}
-                </div>
+            <div>
+              <SectionLabel>Email subscriptions</SectionLabel>
+              <div style={{ font: '400 11px/1.5 var(--font-body)', color: 'var(--t-45)', marginTop: 4 }}>
+                Choose which alerts email you — by event, zone, type and criticality.
               </div>
-              <Toggle on={n.published} onClick={() => saveNotif({ ...n, published: !n.published })} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ font: '600 12.5px var(--font-body)', color: '#fff' }}>Submitted alerts</div>
-                <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)' }}>
-                  {n.submitted ? n.submitted_area || 'On' : "Off — you don't approve alerts"}
-                </div>
-              </div>
-              <Toggle on={n.submitted} onClick={() => saveNotif({ ...n, submitted: !n.submitted })} />
-            </div>
+            <SubscriptionEditor
+              subscriptions={user.subscriptions}
+              countries={countries}
+              profiles={profiles}
+              categories={categories}
+              handlers={{
+                create: (body) => api.createSubscription(body),
+                update: (id, body) => api.updateSubscription(id, body),
+                remove: (id) => api.deleteSubscription(id),
+              }}
+              onChanged={refresh}
+            />
           </Card>
         </div>
 

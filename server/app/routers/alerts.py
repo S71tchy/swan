@@ -10,13 +10,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app import audit, schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import Alert, User
+from app.notifications import service as notify
 from app.rights import can_publish_alert, routing_for_locations
 from app.serialize import alert_to_out
 
@@ -182,7 +183,12 @@ def _require_ready_to_publish(alert: Alert) -> None:
 
 
 @router.post("/{alert_id}/submit", response_model=schemas.AlertOut)
-def submit_alert(alert_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def submit_alert(
+    alert_id: str,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Route to the approval queue of rights-holders for the alert's locations."""
     alert = _get_owned_or_404(db, alert_id, user)
     if alert.status not in ("draft", "rejected"):
@@ -194,6 +200,9 @@ def submit_alert(alert_id: str, db: Session = Depends(get_db), user: User = Depe
     audit.record(db, user, "alert.submitted", alert.id)
     db.commit()
     db.refresh(alert)
+    # Confirm to the author; broadcast to publishers subscribed to the zone.
+    notify.notify_submission_received(db, background, alert)
+    notify.notify_alert_broadcast(db, background, "submitted", alert, actor=user)
     return alert_to_out(alert)
 
 
@@ -201,6 +210,7 @@ def submit_alert(alert_id: str, db: Session = Depends(get_db), user: User = Depe
 def publish_alert(
     alert_id: str,
     body: schemas.PublishRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -221,6 +231,7 @@ def publish_alert(
         )
     _require_ready_to_publish(alert)
 
+    was_submitted = alert.status == "submitted"
     ext = body.external.model_dump()
     alert.visibility = "internal" if ext["mode"] == "none" else "internal_external"
     alert.external_variant = ext if ext["mode"] != "none" else None
@@ -232,6 +243,11 @@ def publish_alert(
     )
     db.commit()
     db.refresh(alert)
+    # Broadcast to subscribers; if a publisher approved someone else's submission,
+    # tell the author their alert was approved.
+    notify.notify_alert_broadcast(db, background, "published", alert, actor=user)
+    if was_submitted and alert.author_id != user.id:
+        notify.notify_alert_decision(db, background, alert, approved=True)
     return alert_to_out(alert)
 
 
@@ -239,6 +255,7 @@ def publish_alert(
 def reject_alert(
     alert_id: str,
     body: schemas.RejectRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -255,11 +272,17 @@ def reject_alert(
     audit.record(db, user, "alert.rejected", alert.id, detail={"comment": body.comment})
     db.commit()
     db.refresh(alert)
+    notify.notify_alert_decision(db, background, alert, approved=False)
     return alert_to_out(alert)
 
 
 @router.post("/{alert_id}/close", response_model=schemas.AlertOut)
-def close_alert(alert_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def close_alert(
+    alert_id: str,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Authors close their own published alerts; rights-holders close any within
     their perimeter. Removes it from the map immediately (spec §5.5)."""
     alert = db.get(Alert, alert_id)
@@ -275,6 +298,7 @@ def close_alert(alert_id: str, db: Session = Depends(get_db), user: User = Depen
     audit.record(db, user, "alert.closed", alert.id)
     db.commit()
     db.refresh(alert)
+    notify.notify_alert_broadcast(db, background, "closed", alert, actor=user)
     return alert_to_out(alert)
 
 

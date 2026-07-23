@@ -11,13 +11,15 @@ point-in-time copy to keep in sync.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import audit, schemas
 from app.database import get_db
 from app.deps import require_rights_manager
-from app.models import Alert, Place, Profile, User
+from app.models import Alert, EmailTemplate, NotificationSubscription, Place, Profile, User
+from app.notifications import service as notify
+from app.notifications.templates import CATALOG, CATALOG_BY_KEY, default_template
 from app.reference import COUNTRY_CATALOGUE, country_meta
 from app.rights import (
     effective_external_countries,
@@ -25,6 +27,7 @@ from app.rights import (
     is_rights_manager,
 )
 from app.security import hash_password
+from app.subscriptions import apply_subscription
 
 _MIN_PASSWORD_LEN = 6
 
@@ -244,6 +247,7 @@ def create_user(
 def update_user(
     user_id: str,
     body: schemas.AdminUserUpdate,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: User = Depends(require_rights_manager),
 ):
@@ -251,6 +255,7 @@ def update_user(
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
+    prev_status = user.status
     before = _user_snapshot(user)
     updates = body.model_dump(exclude_unset=True)
 
@@ -321,6 +326,9 @@ def update_user(
     )
     db.commit()
     db.refresh(user)
+    # Email the user when a Rights Manager validates their pending account.
+    if prev_status == "pending" and user.status == "active":
+        notify.notify_account_activated(db, background, user)
     return _user_row(db, user)
 
 
@@ -567,3 +575,183 @@ def delete_place(
     audit.record(db, actor, "place.deleted", place.code, target_type="place", detail={"name": place.name})
     db.delete(place)
     db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# User notification subscriptions (Rights Manager editing another user's rules)
+# --------------------------------------------------------------------------- #
+def _get_user_or_404(db: Session, user_id: str) -> User:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    return user
+
+
+def _get_sub_or_404(db: Session, user_id: str, sub_id: str) -> NotificationSubscription:
+    sub = db.get(NotificationSubscription, sub_id)
+    if not sub or sub.user_id != user_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subscription not found")
+    return sub
+
+
+@router.get("/users/{user_id}/subscriptions", response_model=list[schemas.SubscriptionOut])
+def list_user_subscriptions(
+    user_id: str, db: Session = Depends(get_db), _: User = Depends(require_rights_manager)
+):
+    _get_user_or_404(db, user_id)
+    rows = (
+        db.query(NotificationSubscription)
+        .filter(NotificationSubscription.user_id == user_id)
+        .order_by(NotificationSubscription.created_at)
+        .all()
+    )
+    return [schemas.SubscriptionOut.model_validate(s) for s in rows]
+
+
+@router.post(
+    "/users/{user_id}/subscriptions",
+    response_model=schemas.SubscriptionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_user_subscription(
+    user_id: str,
+    body: schemas.SubscriptionCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    _get_user_or_404(db, user_id)
+    sub = apply_subscription(NotificationSubscription(user_id=user_id), body.model_dump())
+    db.add(sub)
+    audit.record(db, actor, "subscription.created", user_id, target_type="user", detail={"name": sub.name})
+    db.commit()
+    db.refresh(sub)
+    return schemas.SubscriptionOut.model_validate(sub)
+
+
+@router.patch("/users/{user_id}/subscriptions/{sub_id}", response_model=schemas.SubscriptionOut)
+def update_user_subscription(
+    user_id: str,
+    sub_id: str,
+    body: schemas.SubscriptionUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    sub = _get_sub_or_404(db, user_id, sub_id)
+    apply_subscription(sub, body.model_dump(exclude_unset=True))
+    audit.record(db, actor, "subscription.updated", user_id, target_type="user", detail={"id": sub_id})
+    db.commit()
+    db.refresh(sub)
+    return schemas.SubscriptionOut.model_validate(sub)
+
+
+@router.delete(
+    "/users/{user_id}/subscriptions/{sub_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_user_subscription(
+    user_id: str,
+    sub_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    sub = _get_sub_or_404(db, user_id, sub_id)
+    audit.record(db, actor, "subscription.deleted", user_id, target_type="user", detail={"id": sub_id})
+    db.delete(sub)
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Email templates (admin editor: EN/FR, overrides, preview, test-send)
+# --------------------------------------------------------------------------- #
+def _template_locale(db: Session, key: str, locale: str) -> schemas.TemplateLocaleData:
+    row = db.get(EmailTemplate, (key, locale))
+    if row is not None:
+        return schemas.TemplateLocaleData(subject=row.subject, body=row.body, overridden=True)
+    d = default_template(key, locale)
+    return schemas.TemplateLocaleData(subject=d["subject"], body=d["body"], overridden=False)
+
+
+def _template_entry(db: Session, cat: dict) -> schemas.TemplateEntry:
+    return schemas.TemplateEntry(
+        key=cat["key"], label=cat["label"], description=cat["description"],
+        kind=cat["kind"], tokens=cat["tokens"],
+        en=_template_locale(db, cat["key"], "en"),
+        fr=_template_locale(db, cat["key"], "fr"),
+    )
+
+
+def _check_template_ref(key: str, locale: str) -> None:
+    if key not in CATALOG_BY_KEY:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown template")
+    if locale not in ("en", "fr"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Locale must be en or fr")
+
+
+@router.get("/templates", response_model=list[schemas.TemplateEntry])
+def list_templates(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
+    return [_template_entry(db, cat) for cat in CATALOG]
+
+
+@router.patch("/templates/{key}/{locale}", response_model=schemas.TemplateEntry)
+def update_template(
+    key: str,
+    locale: str,
+    body: schemas.TemplateUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    _check_template_ref(key, locale)
+    row = db.get(EmailTemplate, (key, locale))
+    if row is None:
+        row = EmailTemplate(key=key, locale=locale)
+        db.add(row)
+    row.subject = body.subject
+    row.body = body.body
+    row.updated_by = actor.id
+    audit.record(db, actor, "template.updated", f"{key}/{locale}", target_type="template")
+    db.commit()
+    return _template_entry(db, CATALOG_BY_KEY[key])
+
+
+@router.delete("/templates/{key}/{locale}", response_model=schemas.TemplateEntry)
+def reset_template(
+    key: str,
+    locale: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    """Remove the override, reverting to the built-in default copy."""
+    _check_template_ref(key, locale)
+    row = db.get(EmailTemplate, (key, locale))
+    if row is not None:
+        db.delete(row)
+        audit.record(db, actor, "template.reset", f"{key}/{locale}", target_type="template")
+        db.commit()
+    return _template_entry(db, CATALOG_BY_KEY[key])
+
+
+@router.post("/templates/{key}/{locale}/preview", response_model=schemas.TemplatePreviewOut)
+def preview_template(
+    key: str,
+    locale: str,
+    body: schemas.TemplatePreviewRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_rights_manager),
+):
+    _check_template_ref(key, locale)
+    out = notify.render_preview(db, key, locale, body.subject, body.body)
+    return schemas.TemplatePreviewOut(**out)
+
+
+@router.post("/templates/{key}/{locale}/test", status_code=status.HTTP_202_ACCEPTED)
+def test_template(
+    key: str,
+    locale: str,
+    body: schemas.TemplateTestRequest,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    _check_template_ref(key, locale)
+    to = (body.to or "").strip() or actor.email
+    notify.send_test(db, background, key, locale, body.subject, body.body, to)
+    return {"sent_to": to}

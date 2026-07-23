@@ -8,6 +8,7 @@ import Approvals from './screens/Approvals'
 import Profile from './screens/Profile'
 import RightsAdmin from './screens/RightsAdmin'
 import MasterData from './screens/MasterData'
+import NotificationTemplates from './screens/NotificationTemplates'
 
 function FullBleedLoader() {
   return (
@@ -106,6 +107,14 @@ export default function App() {
         element={
           <RequireAuth>
             <MasterData />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/templates"
+        element={
+          <RequireAuth>
+            <NotificationTemplates />
           </RequireAuth>
         }
       />

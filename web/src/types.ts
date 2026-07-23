@@ -80,12 +80,20 @@ export interface PerimeterRow {
   external: boolean
 }
 
-export interface NotificationRules {
-  published: boolean
-  published_area: string
-  submitted: boolean
-  submitted_area: string
+export type NotificationEvent = 'published' | 'closed' | 'submitted'
+
+export interface Subscription {
+  id: string
+  name: string
+  active: boolean
+  events: NotificationEvent[]
+  countries: string[]
+  profiles: string[]
+  categories: string[]
+  min_severity: Severity
 }
+
+export type SubscriptionInput = Omit<Subscription, 'id'>
 
 export interface UserStats {
   created: number
@@ -118,7 +126,7 @@ export interface RegisterInput {
 
 export interface UserMe extends UserPublic {
   rights: RightsSummary
-  notifications: NotificationRules
+  subscriptions: Subscription[]
   perimeter: PerimeterRow[]
   stats: UserStats
 }
@@ -261,4 +269,26 @@ export interface PlaceInput {
   lat: number
   lng: number
   aliases?: string[]
+}
+
+// --- Email notification templates (admin editor) ---
+export interface TemplateLocaleData {
+  subject: string
+  body: string
+  overridden: boolean
+}
+
+export interface TemplateEntry {
+  key: string
+  label: string
+  description: string
+  kind: 'broadcast' | 'transactional'
+  tokens: string[]
+  en: TemplateLocaleData
+  fr: TemplateLocaleData
+}
+
+export interface TemplatePreview {
+  subject: string
+  body: string
 }

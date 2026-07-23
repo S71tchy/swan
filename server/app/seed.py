@@ -8,7 +8,15 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.database import Base, SessionLocal, engine
-from app.models import Alert, AuditLog, Place, Profile, User
+from app.models import (
+    Alert,
+    AuditLog,
+    EmailTemplate,
+    NotificationSubscription,
+    Place,
+    Profile,
+    User,
+)
 from app.reference import PLACES, STANDARD_PROFILES, country_meta
 from app.security import hash_password
 
@@ -42,6 +50,8 @@ def loc(name_fragment: str, modes: list[str], flow: str = "both") -> dict:
 
 def reset(db) -> None:
     db.query(AuditLog).delete()
+    db.query(EmailTemplate).delete()
+    db.query(NotificationSubscription).delete()
     db.query(Alert).delete()
     db.query(User).delete()
     db.query(Profile).delete()
@@ -97,9 +107,6 @@ def seed_users(db) -> dict[str, User]:
             can_create=True,
             internal_pub_countries=["CI"],
             profiles=[],
-            notify_published=True,
-            notify_published_area="WEST-AFRICA profile",
-            notify_submitted=False,
         ),
         # West-Africa publisher — holds the WEST-AFRICA profile, so the approval
         # queue shows the 3 pending WEST-AFRICA submissions (mock screen 04).
@@ -119,10 +126,6 @@ def seed_users(db) -> dict[str, User]:
             internal_pub_countries=[],
             external_pub_countries=["CI"],
             profiles=["WEST-AFRICA"],
-            notify_published=True,
-            notify_published_area="WEST-AFRICA profile",
-            notify_submitted=True,
-            notify_submitted_area="WEST-AFRICA profile",
         ),
         "nunes": User(
             email="m.nunes@aglgroup.com", name="M. Nunes", initials="MN",
@@ -177,7 +180,6 @@ def seed_users(db) -> dict[str, User]:
             home_country="", home_country_name="", locale="en", timezone="UTC",
             status="pending", can_create=False, is_rights_manager=False,
             internal_pub_countries=[], external_pub_countries=[], profiles=[],
-            notify_published=False, notify_submitted=False,
         ),
         # Global rights manager for the admin flows.
         "admin": User(
@@ -186,7 +188,6 @@ def seed_users(db) -> dict[str, User]:
             role_label="Rights Manager", home_country="CI",
             home_country_name="Côte d'Ivoire", locale="en", timezone="UTC",
             can_create=True, is_rights_manager=True, profiles=["WORLD"],
-            notify_submitted=True, notify_submitted_area="WORLD profile",
         ),
     }
     pw = hash_password(DEV_PASSWORD)
@@ -197,6 +198,33 @@ def seed_users(db) -> dict[str, User]:
     for u in users.values():
         db.refresh(u)
     return users
+
+
+def seed_subscriptions(db, u: dict[str, User]) -> None:
+    """A few demo subscriptions so the broadcast fan-out and the Profile editor
+    show something out of the box (zone / type / criticality combinations)."""
+    subs = [
+        NotificationSubscription(
+            user_id=u["admin"].id, name="All submissions across the network",
+            events=["submitted"], min_severity="info",
+        ),
+        NotificationSubscription(
+            user_id=u["diallo"].id, name="West Africa — watch and above",
+            events=["published", "submitted"], profiles=["WEST-AFRICA"], min_severity="watch",
+        ),
+        NotificationSubscription(
+            user_id=u["awa"].id, name="Published in Côte d'Ivoire",
+            events=["published"], countries=["CI"], min_severity="info",
+        ),
+        NotificationSubscription(
+            user_id=u["naidoo"].id, name="Southern Africa congestion & weather (warning+)",
+            events=["published", "closed"], profiles=["SOUTHERN-AFRICA"],
+            categories=["Congestion", "Weather"], min_severity="warning",
+        ),
+    ]
+    for s in subs:
+        db.add(s)
+    db.commit()
 
 
 def _dt(days: int = 0, hours: int = 0, minutes: int = 0) -> datetime:
@@ -367,12 +395,14 @@ def main() -> None:
         seed_places(db)
         seed_profiles(db)
         users = seed_users(db)
+        seed_subscriptions(db, users)
         seed_alerts(db, users)
         counts = {
             "places": db.query(Place).count(),
             "profiles": db.query(Profile).count(),
             "users": db.query(User).count(),
             "alerts": db.query(Alert).count(),
+            "subscriptions": db.query(NotificationSubscription).count(),
         }
         print(f"Seeded: {counts}")
     finally:
