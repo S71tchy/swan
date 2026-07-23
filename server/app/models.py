@@ -72,6 +72,12 @@ class User(Base):
     # Interim password auth (nullable: SSO-only users have no local password).
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Account lifecycle. "active" is the norm (seeded + admin-created users);
+    # "pending" marks a self-registered account that a Rights Manager has not yet
+    # reviewed/configured. Orthogonal to rights: a registrant is created with
+    # zero rights AND status="pending", which is the signal the admin filters on.
+    status: Mapped[str] = mapped_column(String, default="active", index=True)
+
     # --- Rights model (spec §4.1), four dimensions + manager flag ---
     can_create: Mapped[bool] = mapped_column(Boolean, default=True)
     is_rights_manager: Mapped[bool] = mapped_column(Boolean, default=False)

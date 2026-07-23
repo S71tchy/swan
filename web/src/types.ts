@@ -107,6 +107,13 @@ export interface UserPublic {
   locale: string
   timezone: string
   avatar_gold: boolean
+  status: string
+}
+
+export interface RegisterInput {
+  name: string
+  email: string
+  password: string
 }
 
 export interface UserMe extends UserPublic {
@@ -203,6 +210,7 @@ export interface AdminUserRow {
   is_effective_manager: boolean
   alerts_authored: number
   has_password: boolean
+  status: string
 }
 
 export interface AdminUserInput {
@@ -224,6 +232,7 @@ export interface AdminUserInput {
   client_scope?: string[]
   profiles?: string[]
   password?: string
+  status?: string
 }
 
 export interface ProfileInput {

@@ -13,10 +13,21 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import User
-from app.schemas import DevLoginRequest, PasswordLoginRequest, UserPublic
-from app.security import COOKIE_NAME, create_session_token, verify_password
+from app.schemas import DevLoginRequest, PasswordLoginRequest, RegisterRequest, UserPublic
+from app.security import COOKIE_NAME, create_session_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_MIN_PASSWORD_LEN = 6
+
+
+def _derive_initials(name: str) -> str:
+    parts = [p for p in name.replace("—", " ").split() if p]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
 
 
 def _set_session_cookie(response: Response, user: User) -> None:
@@ -63,6 +74,52 @@ def password_login(body: PasswordLoginRequest, response: Response, db: Session =
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+    _set_session_cookie(response, user)
+    return UserPublic.model_validate(user)
+
+
+@router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
+def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+    """Self-service registration from the login screen.
+
+    Creates a **zero-rights** account (no creation, no publication, no profiles,
+    no manager flag) with status='pending', so a Rights Manager can see it in the
+    admin's Pending filter and configure/validate it. The new user is signed in
+    immediately (read-only until validated)."""
+    email = (body.email or "").strip().lower()
+    name = (body.name or "").strip()
+    if not email or "@" not in email:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A valid email is required")
+    if not name:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Your name is required")
+    if len(body.password or "") < _MIN_PASSWORD_LEN:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Password must be at least {_MIN_PASSWORD_LEN} characters",
+        )
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists")
+
+    user = User(
+        email=email,
+        name=name,
+        initials=_derive_initials(name),
+        role_label="Awaiting activation",
+        password_hash=hash_password(body.password),
+        status="pending",
+        # Explicit zero-rights: nothing is granted until a Rights Manager reviews.
+        can_create=False,
+        is_rights_manager=False,
+        internal_pub_countries=[],
+        external_pub_countries=[],
+        client_scope=[],
+        profiles=[],
+        notify_published=False,
+        notify_submitted=False,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     _set_session_cookie(response, user)
     return UserPublic.model_validate(user)
 

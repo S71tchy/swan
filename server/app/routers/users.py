@@ -89,6 +89,7 @@ def me(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
         locale=user.locale,
         timezone=user.timezone,
         avatar_gold=user.avatar_gold,
+        status=user.status,
         rights=rights_summary(db, user),
         notifications=schemas.NotificationRules(
             published=user.notify_published,

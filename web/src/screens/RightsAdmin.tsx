@@ -100,6 +100,30 @@ function Chip({
   )
 }
 
+function PendingBadge() {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '2px 8px',
+        borderRadius: 11,
+        background: 'var(--yellow-tint)',
+        border: '1px solid var(--yellow-border-strong)',
+        font: '600 9.5px var(--font-display)',
+        letterSpacing: '.5px',
+        textTransform: 'uppercase',
+        color: 'var(--agl-yellow)',
+        flex: 'none',
+      }}
+    >
+      <span className="glow-dot" style={{ width: 6, height: 6, background: 'var(--agl-yellow)' }} />
+      Pending
+    </span>
+  )
+}
+
 function CountryPicker({
   countries,
   selected,
@@ -167,6 +191,7 @@ type UserForm = {
   client_scope: string[]
   profiles: string[]
   password: string
+  status: string
 }
 
 function emptyUser(): UserForm {
@@ -189,6 +214,7 @@ function emptyUser(): UserForm {
     client_scope: [],
     profiles: [],
     password: '',
+    status: 'active',
   }
 }
 
@@ -212,6 +238,7 @@ function rowToForm(u: AdminUserRow): UserForm {
     client_scope: [...u.client_scope],
     profiles: [...u.profiles],
     password: '',
+    status: u.status,
   }
 }
 
@@ -277,20 +304,60 @@ function UserEditor({
     }
   }
 
+  async function validateNow() {
+    setError(null)
+    setBusy(true)
+    try {
+      await onSaved({ ...form, status: 'active' })
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not validate.')
+      setBusy(false)
+    }
+  }
+
+  const isPending = !isNew && form.status === 'pending'
+
   return (
     <Drawer onClose={onClose}>
       <div style={{ padding: '26px 26px 30px', display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Avatar initials={(form.initials || form.name.slice(0, 2) || '?').toUpperCase()} gold={form.avatar_gold} size={44} />
           <div>
-            <div style={{ font: '600 17px var(--font-display)', color: '#fff' }}>
+            <div style={{ font: '600 17px var(--font-display)', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
               {isNew ? 'New user' : form.name}
+              {isPending && <PendingBadge />}
             </div>
             <div style={{ font: '400 11.5px var(--font-body)', color: 'var(--t-45)' }}>
               {isNew ? 'Create an identity and grant its rights' : 'Edit identity & rights'}
             </div>
           </div>
         </div>
+
+        {isPending && (
+          <div
+            style={{
+              borderRadius: 12,
+              border: '1px solid var(--yellow-border-strong)',
+              background: 'var(--yellow-tint)',
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ font: '600 12.5px var(--font-body)', color: 'var(--agl-yellow)' }}>
+                Awaiting validation
+              </div>
+              <div style={{ font: '400 11px/1.5 var(--font-body)', color: 'var(--t-60)' }}>
+                This account self-registered with no rights. Configure the rights below, then validate — or activate now and grant rights later.
+              </div>
+            </div>
+            <Button variant="primary" disabled={busy} onClick={validateNow}>
+              Validate &amp; activate
+            </Button>
+          </div>
+        )}
 
         <SectionLabel>Identity</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -594,6 +661,7 @@ export default function RightsAdmin() {
   const { user, refresh } = useAuth()
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('users')
+  const [onlyPending, setOnlyPending] = useState(false)
   const [countries, setCountries] = useState<CountryRef[]>([])
   const [users, setUsers] = useState<AdminUserRow[]>([])
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
@@ -633,6 +701,11 @@ export default function RightsAdmin() {
     setEditUser(null)
     await reload()
   }
+  // One-click activation from the list (no drawer). Rights stay zero until edited.
+  async function validateUser(id: string) {
+    await api.adminUpdateUser(id, { status: 'active' })
+    await reload()
+  }
 
   // --- profile save/delete ---
   async function saveProfile(
@@ -654,6 +727,9 @@ export default function RightsAdmin() {
     await reload()
     await refresh()
   }
+
+  const pendingCount = users.filter((u) => u.status === 'pending').length
+  const shownUsers = onlyPending ? users.filter((u) => u.status === 'pending') : users
 
   const reachLabel = (codes: string[]) =>
     codes.length === 0 ? (
@@ -696,6 +772,29 @@ export default function RightsAdmin() {
             </div>
           </div>
           <div style={{ flex: 1 }} />
+          {tab === 'users' && (
+            <button
+              onClick={() => setOnlyPending((v) => !v)}
+              title="Show only accounts awaiting validation"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 14px',
+                borderRadius: 10,
+                cursor: 'pointer',
+                font: '600 12px var(--font-display)',
+                color: onlyPending ? 'var(--agl-navy)' : pendingCount > 0 ? 'var(--agl-yellow)' : 'var(--t-60)',
+                background: onlyPending ? 'var(--agl-yellow)' : pendingCount > 0 ? 'var(--yellow-tint)' : 'rgba(255,255,255,.05)',
+                border: `1px solid ${onlyPending || pendingCount > 0 ? 'var(--yellow-border-strong)' : 'var(--border-soft)'}`,
+              }}
+            >
+              {pendingCount > 0 && !onlyPending && (
+                <span className="glow-dot" style={{ width: 7, height: 7, background: 'var(--agl-yellow)' }} />
+              )}
+              {onlyPending ? 'Show all' : `Pending${pendingCount > 0 ? ` · ${pendingCount}` : ''}`}
+            </button>
+          )}
           <button
             onClick={() => navigate('/admin/data')}
             style={{
@@ -790,7 +889,9 @@ export default function RightsAdmin() {
               <span>External reach</span>
               <span>Manager</span>
             </div>
-            {users.map((u) => (
+            {shownUsers.map((u) => {
+              const pending = u.status === 'pending'
+              return (
               <div
                 key={u.id}
                 onClick={() => setEditUser({ form: rowToForm(u), id: u.id, hasPassword: u.has_password })}
@@ -800,29 +901,53 @@ export default function RightsAdmin() {
                   gap: 12,
                   padding: '13px 22px',
                   borderBottom: '1px solid rgba(255,255,255,.055)',
+                  borderLeft: pending ? '2px solid var(--agl-yellow)' : '2px solid transparent',
                   alignItems: 'center',
                   cursor: 'pointer',
                   font: '400 12.5px var(--font-body)',
                   color: 'var(--t-80)',
+                  background: pending ? 'rgba(238,213,142,.05)' : 'transparent',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.03)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = pending ? 'rgba(238,213,142,.09)' : 'rgba(255,255,255,.03)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = pending ? 'rgba(238,213,142,.05)' : 'transparent')}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
                   <Avatar initials={u.initials} gold={u.avatar_gold} size={34} />
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ font: '600 12.5px var(--font-body)', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ font: '600 12.5px var(--font-body)', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 7 }}>
                       {u.name}
                       {u.id === user.id && (
-                        <span style={{ color: 'var(--agl-yellow)', font: '500 10px var(--font-body)', marginLeft: 6 }}>you</span>
+                        <span style={{ color: 'var(--agl-yellow)', font: '500 10px var(--font-body)' }}>you</span>
                       )}
+                      {pending && <PendingBadge />}
                     </div>
                     <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {u.email}
                     </div>
                   </div>
                 </div>
-                <span style={{ color: 'var(--t-65)' }}>{u.role_label}</span>
+                {pending ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void validateUser(u.id)
+                    }}
+                    style={{
+                      justifySelf: 'start',
+                      padding: '6px 12px',
+                      borderRadius: 9,
+                      cursor: 'pointer',
+                      font: '600 11px var(--font-display)',
+                      color: 'var(--agl-navy)',
+                      background: 'var(--agl-yellow)',
+                      border: 'none',
+                    }}
+                  >
+                    Validate
+                  </button>
+                ) : (
+                  <span style={{ color: 'var(--t-65)' }}>{u.role_label}</span>
+                )}
                 <span style={{ color: u.can_create ? 'var(--agl-yellow)' : 'var(--t-40)' }}>
                   {u.can_create ? '✓' : '—'}
                 </span>
@@ -832,9 +957,15 @@ export default function RightsAdmin() {
                   {u.is_effective_manager ? '✓' : '—'}
                 </span>
               </div>
-            ))}
+              )
+            })}
+            {shownUsers.length === 0 && (
+              <div style={{ padding: '16px 22px', font: '400 11.5px var(--font-body)', color: 'var(--t-40)' }}>
+                No accounts are awaiting validation.
+              </div>
+            )}
             <div style={{ padding: '14px 22px', font: '400 11.5px var(--font-body)', color: 'var(--t-40)' }}>
-              New users can sign in immediately from the login screen's identity switcher — useful for testing routing.
+              Self-registered accounts arrive with zero rights and a Pending flag — configure their rights and validate them here.
             </div>
           </div>
         ) : (

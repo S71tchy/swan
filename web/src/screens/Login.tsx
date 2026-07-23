@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { useAuth } from '../auth'
 import { Logo } from '../components/Logo'
 import { MapBackdrop } from '../components/MapBackdrop'
@@ -30,18 +30,58 @@ const loginInput: React.CSSProperties = {
 }
 
 export default function Login() {
-  const { login, loginWithPassword } = useAuth()
+  const { login, loginWithPassword, register } = useAuth()
   const navigate = useNavigate()
+  const [mode, setMode] = useState<'signin' | 'register'>('signin')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [accounts, setAccounts] = useState<UserPublic[]>([])
   const [showSwitcher, setShowSwitcher] = useState(false)
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
 
   useEffect(() => {
     void api.accounts().then(setAccounts).catch(() => setAccounts([]))
   }, [])
+
+  function switchMode(next: 'signin' | 'register') {
+    setMode(next)
+    setError('')
+    setPassword('')
+    setConfirm('')
+  }
+
+  async function registerAccount() {
+    if (!name.trim() || !email.trim() || !password) {
+      setError('Enter your name, email and a password.')
+      return
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await register(name.trim(), email.trim(), password)
+      navigate('/')
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? 'An account with that email already exists.'
+          : e instanceof ApiError
+            ? e.message
+            : 'Registration failed — is the API running?',
+      )
+      setBusy(false)
+    }
+  }
 
   async function signIn(demoEmail?: string) {
     setBusy(true)
@@ -118,14 +158,25 @@ export default function Login() {
           Live disruption awareness across the AGL network
         </div>
 
-        {/* Primary: username (email) + password */}
+        {/* Primary: sign in (email + password) or register a new account */}
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            void signInPassword()
+            if (mode === 'register') void registerAccount()
+            else void signInPassword()
           }}
           style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28 }}
         >
+          {mode === 'register' && (
+            <input
+              type="text"
+              autoComplete="name"
+              placeholder="Full name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={loginInput}
+            />
+          )}
           <input
             type="email"
             autoComplete="username"
@@ -136,12 +187,22 @@ export default function Login() {
           />
           <input
             type="password"
-            autoComplete="current-password"
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             style={loginInput}
           />
+          {mode === 'register' && (
+            <input
+              type="password"
+              autoComplete="new-password"
+              placeholder="Confirm password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              style={loginInput}
+            />
+          )}
           <button
             type="submit"
             disabled={busy}
@@ -163,7 +224,13 @@ export default function Login() {
               cursor: busy ? 'default' : 'pointer',
             }}
           >
-            {busy ? 'Signing in…' : 'Sign in'}
+            {busy
+              ? mode === 'register'
+                ? 'Creating account…'
+                : 'Signing in…'
+              : mode === 'register'
+                ? 'Create account'
+                : 'Sign in'}
           </button>
         </form>
 
@@ -172,6 +239,30 @@ export default function Login() {
             {error}
           </div>
         )}
+
+        {mode === 'register' && !error && (
+          <div style={{ font: '400 11px/1.55 var(--font-body)', color: 'var(--t-45)', marginTop: 12, textAlign: 'center' }}>
+            New accounts start with no access. A Rights Manager reviews and activates your profile before you can create or publish.
+          </div>
+        )}
+
+        <button
+          onClick={() => switchMode(mode === 'register' ? 'signin' : 'register')}
+          style={{
+            marginTop: 14,
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--t-55)',
+            font: '400 12px var(--font-body)',
+            cursor: 'pointer',
+          }}
+        >
+          {mode === 'register' ? (
+            <>Already have an account? <span style={{ color: 'var(--agl-yellow)' }}>Sign in</span></>
+          ) : (
+            <>New to SWAN? <span style={{ color: 'var(--agl-yellow)' }}>Create an account</span></>
+          )}
+        </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', margin: '18px 0 14px' }}>
           <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,.1)' }} />

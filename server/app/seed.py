@@ -169,6 +169,16 @@ def seed_users(db) -> dict[str, User]:
             home_country="CD", home_country_name="DRC", locale="fr",
             timezone="Africa/Lubumbashi", can_create=True, internal_pub_countries=["CD"],
         ),
+        # Self-registered account awaiting validation — demonstrates the login
+        # registration flow and the admin's "Pending" filter. Zero rights.
+        "newbie": User(
+            email="t.mwangi@aglgroup.com", name="Tabitha Mwangi", initials="TM",
+            job_title="", branch="", role_label="Awaiting activation",
+            home_country="", home_country_name="", locale="en", timezone="UTC",
+            status="pending", can_create=False, is_rights_manager=False,
+            internal_pub_countries=[], external_pub_countries=[], profiles=[],
+            notify_published=False, notify_submitted=False,
+        ),
         # Global rights manager for the admin flows.
         "admin": User(
             email="rights.manager@aglgroup.com", name="R. Manager", initials="RM",

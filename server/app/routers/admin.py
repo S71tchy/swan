@@ -34,8 +34,10 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 _USER_AUDITED = (
     "email", "name", "role_label", "home_country", "can_create",
     "is_rights_manager", "internal_pub_countries", "external_pub_countries",
-    "client_scope", "profiles",
+    "client_scope", "profiles", "status",
 )
+
+_USER_STATUSES = ("active", "pending")
 
 
 # --------------------------------------------------------------------------- #
@@ -103,6 +105,7 @@ def _user_snapshot(u: User) -> dict:
         "external_pub_countries": list(u.external_pub_countries or []),
         "client_scope": list(u.client_scope or []),
         "profiles": list(u.profiles or []),
+        "status": u.status,
     }
 
 
@@ -133,6 +136,7 @@ def _user_row(db: Session, u: User) -> schemas.AdminUserRow:
         is_effective_manager=is_rights_manager(db, u),
         alerts_authored=authored,
         has_password=bool(u.password_hash),
+        status=u.status,
     )
 
 
@@ -285,6 +289,14 @@ def update_user(
         user.profiles = _validate_profiles(db, updates["profiles"])
     if "is_rights_manager" in updates and updates["is_rights_manager"] is not None:
         user.is_rights_manager = updates["is_rights_manager"]
+    if "status" in updates and updates["status"] is not None:
+        new_status = updates["status"].strip().lower()
+        if new_status not in _USER_STATUSES:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"Unknown status: {new_status}",
+            )
+        user.status = new_status
 
     password_changed = False
     if updates.get("password"):

@@ -13,6 +13,7 @@ import type {
   PlaceRow,
   ProfileInput,
   ProfileRow,
+  RegisterInput,
   RoutingInfo,
   Taxonomy,
   UserMe,
@@ -59,6 +60,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  register: (body: RegisterInput) =>
+    req<UserPublic>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => req<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
   session: () => req<UserPublic>('/auth/session'),
   accounts: () => req<UserPublic[]>('/auth/accounts'),

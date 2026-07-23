@@ -66,6 +66,16 @@ class UserPublic(BaseModel):
     locale: str
     timezone: str
     avatar_gold: bool
+    status: str = "active"
+
+
+class RegisterRequest(BaseModel):
+    """Self-service registration from the login screen. Creates a zero-rights,
+    status='pending' account awaiting Rights-Manager validation."""
+
+    name: str
+    email: str
+    password: str
 
 
 class UserStats(BaseModel):
@@ -265,6 +275,7 @@ class AdminUserRow(BaseModel):
     is_effective_manager: bool
     alerts_authored: int
     has_password: bool
+    status: str
 
 
 class AdminUserCreate(BaseModel):
@@ -307,6 +318,7 @@ class AdminUserUpdate(BaseModel):
     client_scope: list[str] | None = None
     profiles: list[str] | None = None
     password: str | None = None       # set/reset password when non-empty
+    status: str | None = None         # "active" to validate a pending registrant
 
 
 # --------------------------------------------------------------------------- #
