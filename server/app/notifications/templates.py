@@ -10,9 +10,12 @@ from __future__ import annotations
 LOCALES = ["en", "fr"]
 
 # Token groups reused across several templates.
+# The *_html / flags tokens render bundled circular country flags as inline
+# images (see render.py); the plain `locations`/`countries` stay text-only.
 _ALERT_TOKENS = [
     "recipient_name", "title", "category", "sub_category", "severity",
-    "locations", "valid_from", "valid_to", "impact", "action_plan",
+    "locations", "locations_html", "countries", "countries_html", "flags",
+    "valid_from", "valid_to", "impact", "action_plan",
     "author", "alert_url", "approvals_url", "app_url",
 ]
 
@@ -91,9 +94,9 @@ def _alert_html(lang: str, intro: str, cta_label: str, cta_token: str = "alert_u
     grey = '<span style="color:#6b7688;">'
     return (
         "<p>" + hi + "</p>"
-        "<h2>{{title}}</h2>"
-        "<p><strong>{{severity}}</strong> &middot; {{category}} / {{sub_category}}<br>"
-        + grey + loc_l + "</span> {{locations}}<br>"
+        "<h2>{{flags}}&nbsp;{{title}}</h2>"
+        "<p><strong>{{severity}}</strong> &middot; {{category}} / {{sub_category}}</p>"
+        "<p>" + grey + loc_l + "</span><br>{{locations_html}}<br>"
         + grey + val_l + "</span> {{valid_from}} &rarr; {{valid_to}}<br>"
         + grey + auth_l + "</span> {{author}}</p>"
         "<p>" + intro + "</p>"

@@ -57,10 +57,12 @@ def _dispatch(background: BackgroundTasks | None, to: list[str], subject: str, h
     to = [t for t in to if t]
     if not to:
         return
+    # Attach exactly the flag images this message references (usually 1–3).
+    images = render.inline_images(html)
     if background is not None:
-        background.add_task(mailer.send_email, to, subject, html, text)
+        background.add_task(mailer.send_email, to, subject, html, text, images)
     else:
-        mailer.send_email(to, subject, html, text)
+        mailer.send_email(to, subject, html, text, images)
 
 
 # --------------------------------------------------------------------------- #
@@ -167,13 +169,24 @@ def notify_account_activated(db: Session, background: BackgroundTasks | None, us
 # --------------------------------------------------------------------------- #
 def sample_context(key: str) -> dict:
     """Representative token values so a manager can preview/test any template."""
+    # Two Côte d'Ivoire ports + a Ghana lane, so the flag tokens have something
+    # to show in the preview/test.
+    sample_locations = [
+        {"name": "Abidjan (CIABJ)", "country": "CI", "country_name": "Côte d'Ivoire"},
+        {"name": "San-Pédro (CISPY)", "country": "CI", "country_name": "Côte d'Ivoire"},
+        {"name": "Tema (GHTEM)", "country": "GH", "country_name": "Ghana"},
+    ]
     base = {
         "recipient_name": "Awa Kouassi",
         "title": "Port congestion at Abidjan — 6 day berth delay",
         "category": "Congestion",
         "sub_category": "Port congestion",
         "severity": "Warning",
-        "locations": "Abidjan (CIABJ), San-Pédro (CISPY)",
+        "locations": ", ".join(l["name"] for l in sample_locations),
+        "flags": render.flags_for(sample_locations),
+        "locations_html": render.locations_for(sample_locations),
+        "countries": "Côte d'Ivoire, Ghana",
+        "countries_html": render.countries_for(sample_locations),
         "valid_from": "23 Jul 2026",
         "valid_to": "until further notice",
         "impact": "Vessels waiting at anchorage; imports delayed ~6 days.",
@@ -193,7 +206,9 @@ def render_preview(db: Session, key: str, locale: str, subject: str, body: str) 
     returning the fully-shelled HTML for the editor's iframe preview."""
     ctx = sample_context(key)
     inner = render.render_html(body, ctx)
-    return {"subject": render.render(subject, ctx), "body": render.wrap_html(inner)}
+    # The iframe preview can't resolve cid:, so embed flags as data: URIs.
+    html = render.inline_data_uris(render.wrap_html(inner))
+    return {"subject": render.render(subject, ctx), "body": html}
 
 
 def send_test(db: Session, background: BackgroundTasks | None, key: str, locale: str,

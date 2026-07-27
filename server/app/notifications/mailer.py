@@ -13,14 +13,24 @@ from app.config import settings
 log = logging.getLogger("swan.mail")
 
 
-def send_email(to: list[str] | str, subject: str, html: str, text: str | None = None) -> None:
+def send_email(
+    to: list[str] | str,
+    subject: str,
+    html: str,
+    text: str | None = None,
+    images: dict[str, bytes] | None = None,
+) -> None:
     """Send a multipart/alternative email (plain-text + HTML). `text` falls back
-    to the HTML if not supplied (rare)."""
+    to the HTML if not supplied (rare). `images` maps a Content-ID (e.g.
+    "flag-ci", referenced as cid:flag-ci in the HTML) to PNG bytes; each is
+    attached inline (multipart/related) so it renders embedded, not as a
+    download."""
     recipients = [to] if isinstance(to, str) else list(to)
     recipients = [r for r in recipients if r]
     if not recipients:
         return
     text = text or html
+    images = images or {}
 
     if not settings.smtp_host:
         # Dev fallback: no SMTP configured — surface the email in the console.
@@ -42,6 +52,11 @@ def send_email(to: list[str] | str, subject: str, html: str, text: str | None = 
         msg["To"] = ", ".join(recipients)
         msg.set_content(text)                      # plain-text part
         msg.add_alternative(html, subtype="html")  # HTML part
+        # Attach inline images to the HTML part (multipart/related), so cid:
+        # references resolve to embedded pictures rather than attachments.
+        html_part = msg.get_payload()[1]
+        for cid, data in images.items():
+            html_part.add_related(data, maintype="image", subtype="png", cid=f"<{cid}>")
         sender = parseaddr(settings.smtp_from)[1] or settings.smtp_from
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as s:
             s.ehlo()
