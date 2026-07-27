@@ -10,9 +10,12 @@ from app.routers import admin, alerts, approvals, auth, meta, users
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on boot. For Postgres, prefer Alembic migrations in prod;
-    # create_all is convenient for SQLite dev and idempotent.
-    Base.metadata.create_all(bind=engine)
+    # SQLite dev: create tables on boot (idempotent, zero-friction).
+    # Postgres/prod: the schema is owned by Alembic (`alembic upgrade head`), so
+    # skip create_all — it would create un-versioned tables that migrations then
+    # can't stamp/track.
+    if engine.dialect.name == "sqlite":
+        Base.metadata.create_all(bind=engine)
     yield
 
 

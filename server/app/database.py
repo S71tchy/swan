@@ -6,11 +6,18 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from app.config import settings
 
 # SQLite needs check_same_thread off for FastAPI's threadpool; Postgres ignores it.
-connect_args = {}
-if settings.database_url.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
+_is_sqlite = settings.database_url.startswith("sqlite")
+connect_args = {"check_same_thread": False} if _is_sqlite else {}
 
-engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
+# Pool tuning only matters for a networked DB (Postgres). SQLite uses a
+# non-pooling connection, so these kwargs are skipped there.
+engine_kwargs: dict = {"connect_args": connect_args, "future": True}
+if not _is_sqlite:
+    # pool_pre_ping transparently discards connections dropped by the server or a
+    # proxy (managed Postgres closes idle ones), avoiding stale-connection errors.
+    engine_kwargs.update(pool_pre_ping=True, pool_size=5, max_overflow=10, pool_recycle=1800)
+
+engine = create_engine(settings.database_url, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
 
 

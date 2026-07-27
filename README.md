@@ -74,17 +74,30 @@ on :8000, so the session cookie is same-origin.
 
 ### Using Postgres instead of SQLite
 
-Set `DATABASE_URL` in `server/.env`, then seed:
+No code changes required — the models are DB-agnostic. On Postgres the schema is
+owned by **Alembic** (not the app's boot-time `create_all`, which is SQLite-only).
+Set `DATABASE_URL`, create the schema, then seed once:
 
 ```
 DATABASE_URL=postgresql+psycopg://swan:swan@localhost:5432/swan
 ```
 
 ```bash
-uv run python -m app.seed
+uv run alembic upgrade head   # create/upgrade the schema (versioned)
+uv run python -m app.seed     # initial data ONCE — this wipes & reseeds
 ```
 
-No code changes required — the models are DB-agnostic.
+> ⚠️ Use the `postgresql+psycopg://` scheme (psycopg **v3**). A bare
+> `postgresql://` selects psycopg2, which isn't installed, and fails.
+
+After a model change, generate and apply a migration:
+
+```bash
+uv run alembic revision --autogenerate -m "describe the change"   # review the file
+uv run alembic upgrade head
+```
+
+**Full production migration runbook:** [`migration.md`](./migration.md).
 
 ## Demo identities
 
