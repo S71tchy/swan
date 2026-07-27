@@ -1,5 +1,6 @@
-// Thin fetch wrapper. All calls go through the Vite proxy (/api -> :8000) so the
-// session cookie is same-origin. Swap BASE for a real host in production.
+// Thin fetch wrapper. Every call is same-origin under /api: in dev via the Vite
+// proxy to :8000, in prod because FastAPI serves both the API (/api) and the
+// built app from one origin — so the session cookie is always same-site.
 import type {
   AdminUserInput,
   AdminUserRow,

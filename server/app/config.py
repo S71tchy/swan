@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 12
     frontend_origin: str = "http://localhost:5173"
 
+    # Session cookie hardening. Secure requires HTTPS, so it's off for local dev
+    # over http and set True in any TLS-terminated deployment (Railway/Azure).
+    cookie_secure: bool = False
+
+    # Path to the built frontend (web/dist) for single-origin serving. Empty =
+    # auto-detect relative to the repo; set explicitly in containers (STATIC_DIR).
+    static_dir: str = ""
+
     # Stubbed-SSO seam. When a real OIDC IdP is wired in Phase 1.5, these are the
     # only values that change; the login router swaps its dev endpoint for the
     # authorization-code flow. See app/routers/auth.py.

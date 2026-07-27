@@ -38,7 +38,7 @@ def _set_session_cookie(response: Response, user: User) -> None:
         value=token,
         httponly=True,
         samesite="lax",
-        secure=False,  # dev over http; set True behind TLS
+        secure=settings.cookie_secure,  # True behind TLS (prod); False for local http
         max_age=settings.session_ttl_hours * 3600,
         path="/",
     )

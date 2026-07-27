@@ -1,0 +1,19 @@
+# Build artifacts / deps — reinstalled or rebuilt inside the image
+**/.venv
+**/node_modules
+web/dist
+**/__pycache__
+**/*.pyc
+
+# Local dev database (never ship dev data)
+server/*.db
+
+# VCS / tooling
+.git
+.gitignore
+
+# Internal docs & config that must not ship in the image
+.claude
+CLAUDE.md
+swan_spec_v2.md
+design_handoff
