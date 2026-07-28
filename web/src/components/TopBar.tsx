@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import type { UserMe } from '../types'
 import { Avatar } from './Avatar'
 import { Logo, Wordmark } from './Logo'
-import { PlusIcon, SearchIcon } from './icons'
+import { PlusIcon } from './icons'
 
 interface TopBarProps {
   breadcrumb?: string
-  showSearch?: boolean
-  showCreate?: boolean
+  /** Optional control rendered in the centre — the dashboard passes its map
+   *  search here. Previously this slot held a non-functional placeholder box. */
+  search?: ReactNode
 }
 
 // Avatar with a small dropdown: My profile / Sign out.
@@ -101,9 +102,15 @@ function AvatarMenu({ user }: { user: UserMe }) {
   )
 }
 
-export function TopBar({ breadcrumb, showSearch = false, showCreate = true }: TopBarProps) {
+export function TopBar({ breadcrumb, search }: TopBarProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
+
+  // One Create CTA, on every screen, for everyone who may actually create —
+  // suppressed only on the create form itself. Screens no longer opt in or out,
+  // which is what made the action appear a different number of times per page.
+  const showCreate = !!user?.rights.can_create && !location.pathname.startsWith('/create')
 
   return (
     <div
@@ -131,27 +138,7 @@ export function TopBar({ breadcrumb, showSearch = false, showCreate = true }: To
       )}
       <div style={{ flex: 1 }} />
 
-      {showSearch && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            width: 380,
-            height: 42,
-            padding: '0 16px',
-            borderRadius: 21,
-            background: 'rgba(22,38,63,.75)',
-            border: '1px solid var(--border-mid)',
-            backdropFilter: 'blur(12px)',
-          }}
-        >
-          <SearchIcon size={15} stroke="rgba(255,255,255,.5)" />
-          <span style={{ font: '400 13px var(--font-body)', color: 'var(--t-45)' }}>
-            Search country, city or port…
-          </span>
-        </div>
-      )}
+      {search}
 
       {showCreate && (
         <button

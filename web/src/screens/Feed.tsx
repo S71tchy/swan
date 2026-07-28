@@ -566,7 +566,7 @@ export default function Feed() {
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
       <MapBackdrop opacity={0.45} blur={2} overlay="rgba(8,14,26,.5)" />
-      <TopBar breadcrumb="Live feed" showCreate />
+      <TopBar breadcrumb="Live feed" />
       <LeftRail />
 
       <div

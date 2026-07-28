@@ -103,7 +103,7 @@ export default function Profile() {
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
       <MapBackdrop opacity={0.45} blur={2} overlay="rgba(8,14,26,.5)" />
-      <TopBar breadcrumb="My profile" showCreate={false} />
+      <TopBar breadcrumb="My profile" />
       <LeftRail />
 
       <div

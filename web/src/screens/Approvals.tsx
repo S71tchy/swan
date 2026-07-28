@@ -255,7 +255,7 @@ export default function Approvals() {
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
       <MapBackdrop opacity={0.6} blur={0} overlay="" stroke />
-      <TopBar showCreate={false} />
+      <TopBar />
 
       {/* slide-over */}
       <div

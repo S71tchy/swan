@@ -534,6 +534,41 @@ export default function CreateAlert() {
 
   const primaryLabel = routing?.action === 'publish' ? 'Publish' : 'Submit for approval →'
 
+  // Creation is a rights dimension of its own. Without it the server refuses at
+  // POST /alerts — so say so up front rather than after the form is filled in.
+  if (user && !user.rights.can_create) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
+        <MapBackdrop opacity={0.35} blur={3} overlay="rgba(8,14,26,.55)" />
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+          <div
+            style={{
+              width: 420,
+              maxWidth: 'calc(100vw - 40px)',
+              borderRadius: 18,
+              background: 'var(--glass-90)',
+              border: '1px solid var(--border-mid)',
+              backdropFilter: 'blur(18px)',
+              padding: 30,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ font: '600 17px var(--font-display)', color: '#fff', marginBottom: 8 }}>
+              Creation rights required
+            </div>
+            <div style={{ font: '400 12.5px/1.6 var(--font-body)', color: 'var(--t-60)', marginBottom: 18 }}>
+              Your account can view and search alerts but not raise them. Ask a Rights Manager to grant
+              the Creation right if you need to report disruptions.
+            </div>
+            <Button variant="outline" onClick={() => navigate('/feed')}>
+              Back to the feed
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
       <MapBackdrop opacity={0.35} blur={3} overlay="rgba(8,14,26,.55)" />

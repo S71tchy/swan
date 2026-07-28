@@ -85,7 +85,7 @@ export function AdminScreen({
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
       <MapBackdrop opacity={0.45} blur={2} overlay="rgba(8,14,26,.5)" />
-      <TopBar breadcrumb={`Settings · ${title}`} showCreate={false} />
+      <TopBar breadcrumb={`Settings · ${title}`} />
       <LeftRail />
 
       <div
@@ -324,7 +324,7 @@ export function AdminGate({ breadcrumb }: { breadcrumb: string }) {
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
       <MapBackdrop opacity={0.45} blur={2} overlay="rgba(8,14,26,.5)" />
-      <TopBar breadcrumb={breadcrumb} showCreate={false} />
+      <TopBar breadcrumb={breadcrumb} />
       <LeftRail />
       <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
         <div

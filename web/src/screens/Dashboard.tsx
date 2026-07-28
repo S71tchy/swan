@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { TopBar } from '../components/TopBar'
 import { LeftRail } from '../components/LeftRail'
+import { MapSearch, matchAlerts } from '../components/MapSearch'
 import { AlertDetailPanel } from '../components/AlertDetailPanel'
 import { swanMapStyle } from '../lib/mapStyle'
 import { addDetailOverlay } from '../lib/mapOverlay'
@@ -36,7 +37,7 @@ function buildClusters(alerts: Alert[]): Cluster[] {
   return [...byCode.values()]
 }
 
-function markerElement(cluster: Cluster, selected: boolean): HTMLElement {
+function markerElement(cluster: Cluster, selected: boolean, dimmed: boolean): HTMLElement {
   const spec = MARKER_SPEC[cluster.severity]
   const color = SEVERITY_COLOR[cluster.severity]
   const el = document.createElement('div')
@@ -44,8 +45,12 @@ function markerElement(cluster: Cluster, selected: boolean): HTMLElement {
   el.style.cursor = 'pointer'
   el.style.width = '0'
   el.style.height = '0'
+  // Search narrows the map: non-matching clusters fade back rather than vanish,
+  // so you keep the geographic context while the hits stand out.
+  el.style.opacity = dimmed ? '0.2' : '1'
+  el.style.transition = 'opacity .2s'
 
-  if (cluster.severity === 'critical') {
+  if (cluster.severity === 'critical' && !dimmed) {
     const ring = document.createElement('div')
     ring.style.cssText = `position:absolute;left:${-spec.size / 2}px;top:${-spec.size / 2}px;width:${spec.size}px;height:${spec.size}px;border-radius:50%;background:${color};animation:swanPulse 2.2s ease-out infinite;`
     el.appendChild(ring)
@@ -121,9 +126,20 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const clusters = useMemo(() => buildClusters(alerts), [alerts])
   const selected = alerts.find((a) => a.id === selectedId) ?? null
+
+  // Ids the current query matches; empty query means "no dimming at all".
+  const matchedIds = useMemo(() => {
+    if (!searchQuery.trim()) return null
+    return new Set(matchAlerts(alerts, searchQuery).map((a) => a.id))
+  }, [alerts, searchQuery])
+
+  const flyTo = useCallback((lng: number, lat: number, zoom = 5) => {
+    mapRef.current?.flyTo({ center: [lng, lat], zoom, speed: 1.1 })
+  }, [])
 
   // Load data
   useEffect(() => {
@@ -162,7 +178,8 @@ export default function Dashboard() {
         (a, b) => Number(b.severity === 'critical') - Number(a.severity === 'critical'),
       )[0]
       const isSel = cluster.alerts.some((a) => a.id === selectedId)
-      const el = markerElement(cluster, isSel)
+      const dimmed = matchedIds !== null && !cluster.alerts.some((a) => matchedIds.has(a.id))
+      const el = markerElement(cluster, isSel, dimmed)
       el.addEventListener('click', (e) => {
         e.stopPropagation()
         setSelectedId(top.id)
@@ -170,7 +187,7 @@ export default function Dashboard() {
       })
       return new maplibregl.Marker({ element: el }).setLngLat([cluster.lng, cluster.lat]).addTo(map)
     })
-  }, [clusters, selectedId])
+  }, [clusters, selectedId, matchedIds])
 
   async function handleCloseAlert() {
     if (!selected) return
@@ -189,7 +206,20 @@ export default function Dashboard() {
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
 
-      <TopBar showSearch showCreate />
+      <TopBar
+        search={
+          <MapSearch
+            alerts={alerts}
+            onQueryChange={setSearchQuery}
+            onPickPlace={(p) => flyTo(p.lng, p.lat, 6)}
+            onPickAlert={(a) => {
+              setSelectedId(a.id)
+              const loc = a.locations[0]
+              if (loc) flyTo(loc.lng, loc.lat, 5)
+            }}
+          />
+        }
+      />
       <LeftRail />
 
       {/* Stat strip — one floating glass panel, segmented */}
