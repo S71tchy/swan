@@ -88,7 +88,8 @@ export function LeftRail() {
     { key: 'home', title: 'Home', path: '/', icon: (a) => <HomeIcon stroke={activeStroke(a)} /> },
     { key: 'feed', title: 'Live feed', path: '/feed', icon: (a) => <FeedIcon stroke={activeStroke(a)} /> },
     { key: 'create', title: 'Create', path: '/create', icon: (a) => <PlusIcon stroke={activeStroke(a)} /> },
-    { key: 'search', title: 'Search alerts', path: '/feed', icon: (a) => <SearchIcon stroke={activeStroke(a)} /> },
+    // deep-links to the feed with its search box focused (press "/" once there)
+    { key: 'search', title: 'Search alerts', path: '/feed?focus=search', icon: (a) => <SearchIcon stroke={activeStroke(a)} /> },
     {
       key: 'approvals',
       title: 'Approvals',
