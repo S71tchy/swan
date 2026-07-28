@@ -5,6 +5,7 @@ import {
   fmtDate,
   MODE_GLYPH,
   MODE_LABEL,
+  placeLabel,
 } from '../lib/format'
 import { Avatar } from './Avatar'
 import { CategoryChip, ChipOutline, SectionLabel, SeverityBadge } from './ui'
@@ -129,7 +130,7 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
           {loc && (
             <ChipOutline accent>
               <CountryFlag code={loc.country} size={14} title={loc.country_name} style={{ marginRight: 5 }} />
-              {loc.name.split(' — ')[0]}, {loc.country}
+              {placeLabel(loc.name)}, {loc.country}
             </ChipOutline>
           )}
         </div>

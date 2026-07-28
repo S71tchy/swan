@@ -113,3 +113,13 @@ export function dayGroup(iso: string | null): string {
   if (days <= 7) return 'Earlier this week'
   return 'Earlier'
 }
+
+/** Display name for a location block.
+ *
+ * Stored names carry disambiguators the UI doesn't need next to a country
+ * chip — a " — " suffix and/or a bracketed LOCODE ("Beira (MZBEW)"). Strip
+ * both so a chip reads "Beira, MZ" rather than "Beira (MZBEW), MZ".
+ */
+export function placeLabel(name: string): string {
+  return name.split(' — ')[0].replace(/\s*\([^)]*\)\s*$/, '').trim()
+}

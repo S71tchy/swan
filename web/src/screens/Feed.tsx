@@ -7,6 +7,8 @@ import { LeftRail } from '../components/LeftRail'
 import { MapBackdrop } from '../components/MapBackdrop'
 import { AlertDetailPanel } from '../components/AlertDetailPanel'
 import { CountryFlag } from '../components/CountryFlag'
+import { Avatar } from '../components/Avatar'
+import { CategoryChip, ChipOutline, SectionLabel, SeverityBadge } from '../components/ui'
 import {
   DensityToggle,
   FilterPill,
@@ -17,6 +19,8 @@ import {
   type Option,
 } from '../components/filters'
 import {
+  MODE_GLYPH,
+  MODE_LABEL,
   SEVERITY_COLOR,
   SEVERITY_LABEL,
   SEVERITY_TEXT,
@@ -24,6 +28,7 @@ import {
   fmtFeedTime,
   dayGroup,
   modesLabel,
+  placeLabel,
 } from '../lib/format'
 import type { Alert, AlertStatus, Severity } from '../types'
 
@@ -139,16 +144,25 @@ function LocationSummary({ alert, size = 13 }: { alert: Alert; size?: number }) 
         <span style={{ font: '500 10px var(--font-display)', color: 'var(--t-40)' }}>+{countries.length - 3}</span>
       )}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {first.name.split(' — ')[0]}
+        {placeLabel(first.name)}
         {extra > 0 && <span style={{ color: 'var(--t-40)' }}> +{extra} more</span>}
       </span>
     </span>
   )
 }
 
+/** The feed card uses the same vocabulary as AlertDetailPanel — solid severity
+ *  badge, category chip, outlined fact chips, section-labelled body, avatar
+ *  footer — so the card and the panel read as one thing at two zoom levels.
+ *  It previously flattened all of that into two runs of muted grey text. */
 function FeedCard({ alert, q, onClick }: { alert: Alert; q: string; onClick: () => void }) {
   const [hover, setHover] = useState(false)
   const modes = [...new Set(alert.locations.flatMap((l) => l.modes))]
+  // Impact is the operationally useful field; description is often a restatement
+  // of the title, so it's only the fallback.
+  const body = alert.impacts?.trim() || alert.description
+  const bodyLabel = alert.impacts?.trim() ? 'Impact' : 'Summary'
+
   return (
     <div
       onClick={onClick}
@@ -159,61 +173,108 @@ function FeedCard({ alert, q, onClick }: { alert: Alert; q: string; onClick: () 
         background: hover ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.04)',
         border: '1px solid rgba(255,255,255,.09)',
         borderTop: `3px solid ${SEVERITY_COLOR[alert.severity]}`,
-        padding: '16px 18px',
+        padding: '14px 16px 12px',
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: 10,
         cursor: 'pointer',
         transform: hover ? 'translateY(-1px)' : 'none',
         transition: 'background .12s, transform .12s',
+        minWidth: 0,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      {/* status row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <SeverityBadge severity={alert.severity} />
+        <CategoryChip>
+          {alert.category}
+          {alert.sub_category ? ` · ${alert.sub_category}` : ''}
+        </CategoryChip>
+        <span style={{ flex: 1 }} />
+        <span
+          style={{ font: '500 10.5px var(--font-body)', color: 'var(--t-50)', flex: 'none', whiteSpace: 'nowrap' }}
+        >
+          {fmtFeedTime(alert.published_at)}
+        </span>
+      </div>
+
+      <div style={{ font: '600 15px/1.35 var(--font-display)', color: '#fff' }}>
+        <Highlight text={alert.title} q={q} />
+      </div>
+
+      {body && (
+        <div>
+          <SectionLabel style={{ marginBottom: 4 }}>{bodyLabel}</SectionLabel>
+          <div
+            style={{
+              font: '400 12px/1.6 var(--font-body)',
+              color: 'var(--t-75)',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            <Highlight text={body} q={q} />
+          </div>
+        </div>
+      )}
+
+      {/* facts — each one its own chip instead of a middot-separated run */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        {modes.map((m) => (
+          <ChipOutline key={m}>
+            {MODE_GLYPH[m]} {MODE_LABEL[m]}
+          </ChipOutline>
+        ))}
+        {alert.locations.slice(0, 2).map((l, i) => (
+          <ChipOutline key={`${l.code}-${i}`} accent>
+            <CountryFlag code={l.country} size={12} title={l.country_name} style={{ marginRight: 4 }} />
+            {placeLabel(l.name)}, {l.country}
+          </ChipOutline>
+        ))}
+        {alert.locations.length > 2 && (
+          <ChipOutline accent>+{alert.locations.length - 2} more</ChipOutline>
+        )}
+        <ChipOutline>
+          {alert.valid_to_label === 'until further notice'
+            ? 'Until further notice'
+            : `Until ${alert.valid_to_label}`}
+        </ChipOutline>
+      </div>
+
+      {/* author footer, divided like the panel's */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          paddingTop: 10,
+          borderTop: '1px solid rgba(255,255,255,.08)',
+          minWidth: 0,
+        }}
+      >
+        <Avatar initials={alert.author.initials} size={24} />
         <span
           style={{
-            font: '700 10px var(--font-display)',
-            color: SEVERITY_TEXT[alert.severity],
-            letterSpacing: '1px',
+            font: '500 11px var(--font-body)',
+            color: 'var(--t-65)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}
         >
-          {alert.severity.toUpperCase()} · {alert.category.toUpperCase()}
+          {alert.author.name}
+          {alert.author.branch && <span style={{ color: 'var(--t-40)' }}> · {alert.author.branch}</span>}
         </span>
-        <span style={{ font: '400 10.5px var(--font-body)', color: 'var(--t-35)', flex: 'none' }}>
-          {fmtFeedTime(alert.published_at)}
-        </span>
-      </div>
-      <div style={{ font: '600 14px/1.4 var(--font-display)', color: '#fff' }}>
-        <Highlight text={alert.title} q={q} />
-      </div>
-      <div
-        style={{
-          font: '400 12px/1.55 var(--font-body)',
-          color: 'var(--t-60)',
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}
-      >
-        <Highlight text={alert.description} q={q} />
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          font: '400 11px var(--font-body)',
-          color: 'var(--t-45)',
-          minWidth: 0,
-        }}
-      >
-        <LocationSummary alert={alert} />
-        <span style={{ flex: 'none' }}>· {modesLabel(modes)}</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ color: 'var(--t-55)', flex: 'none', whiteSpace: 'nowrap' }}>{alert.author.name}</span>
+        {alert.urls.length > 0 && (
+          <>
+            <span style={{ flex: 1 }} />
+            <span style={{ font: '500 10.5px var(--font-body)', color: 'var(--agl-yellow)', flex: 'none' }}>
+              {alert.urls.length} source{alert.urls.length > 1 ? 's' : ''} ↗
+            </span>
+          </>
+        )}
       </div>
     </div>
   )
