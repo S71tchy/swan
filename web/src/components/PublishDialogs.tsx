@@ -52,13 +52,46 @@ interface Props {
   onConfirm: (external: ExternalVariant) => void
   busy?: boolean
   title?: string
+  /** False when the actor lacks External Publication rights for some location —
+   *  the client-facing options are then shown disabled rather than offered and
+   *  rejected by the server. Defaults to true so existing callers are unchanged. */
+  canExternal?: boolean
+  /** Countries blocking the external choice, for the explanation line. */
+  externalUncovered?: string[]
+  /** Surfaced inside the dialog so a failed publish is visible where it happened. */
+  error?: string | null
 }
 
-export function PublishDialogs({ onCancel, onConfirm, busy, title }: Props) {
+export function PublishDialogs({
+  onCancel,
+  onConfirm,
+  busy,
+  title,
+  canExternal = true,
+  externalUncovered = [],
+  error,
+}: Props) {
   const [step, setStep] = useState<Step>('content')
   const [choice, setChoice] = useState<Choice>('none')
   const [extTitle, setExtTitle] = useState(title ?? '')
   const [extBody, setExtBody] = useState('')
+
+  const ErrorNote = () =>
+    error ? (
+      <div
+        style={{
+          borderRadius: 10,
+          border: '1px solid rgba(207,69,39,.5)',
+          background: 'rgba(207,69,39,.12)',
+          padding: '10px 12px',
+          font: '400 12px/1.5 var(--font-body)',
+          color: 'var(--sev-critical-text)',
+          marginBottom: 16,
+        }}
+      >
+        {error}
+      </div>
+    ) : null
 
   if (step === 'content') {
     return (
@@ -71,6 +104,7 @@ export function PublishDialogs({ onCancel, onConfirm, busy, title }: Props) {
             Please confirm all information is correct. Once published, this alert becomes visible on
             the live map and in the feed to everyone in scope.
           </div>
+          <ErrorNote />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
             <Button variant="ghost" onClick={onCancel}>
               Cancel
@@ -134,6 +168,7 @@ export function PublishDialogs({ onCancel, onConfirm, busy, title }: Props) {
               outline: 'none',
             }}
           />
+          <ErrorNote />
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <Button variant="ghost" onClick={() => setStep('external')}>
               ← Back
@@ -168,20 +203,24 @@ export function PublishDialogs({ onCancel, onConfirm, busy, title }: Props) {
           To provide our customers more insight, this alert can be published both internally and
           externally. Do you agree?
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
           {options.map((o) => {
             const on = choice === o.value
+            // Only "internal only" stays available without external rights.
+            const locked = !canExternal && o.value !== 'none'
             return (
               <div
                 key={o.value}
-                onClick={() => setChoice(o.value)}
+                onClick={() => !locked && setChoice(o.value)}
+                title={locked ? 'You do not hold External Publication rights for all locations' : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
                   padding: '12px 14px',
                   borderRadius: 12,
-                  cursor: 'pointer',
+                  cursor: locked ? 'not-allowed' : 'pointer',
+                  opacity: locked ? 0.45 : 1,
                   background: on ? 'var(--yellow-tint-soft)' : 'rgba(255,255,255,.03)',
                   border: `1px solid ${on ? 'var(--yellow-border-strong)' : 'var(--border-mid)'}`,
                 }}
@@ -202,12 +241,36 @@ export function PublishDialogs({ onCancel, onConfirm, busy, title }: Props) {
                 </span>
                 <div>
                   <div style={{ font: '500 13px var(--font-body)', color: '#fff' }}>{o.label}</div>
-                  <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)' }}>{o.hint}</div>
+                  <div style={{ font: '400 11px var(--font-body)', color: 'var(--t-45)' }}>
+                    {locked ? 'Requires External Publication rights' : o.hint}
+                  </div>
                 </div>
               </div>
             )
           })}
         </div>
+
+        {!canExternal && (
+          <div
+            style={{
+              borderRadius: 10,
+              border: '1px solid var(--border-soft)',
+              background: 'rgba(255,255,255,.04)',
+              padding: '10px 12px',
+              font: '400 11.5px/1.55 var(--font-body)',
+              color: 'var(--t-55)',
+              marginBottom: 16,
+            }}
+          >
+            You hold Internal Publication for this alert but not External
+            {externalUncovered.length > 0 && (
+              <> for <b style={{ color: 'var(--t-75)' }}>{externalUncovered.join(', ')}</b></>
+            )}
+            , so it can only be published internally.
+          </div>
+        )}
+
+        <ErrorNote />
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <Button variant="ghost" onClick={() => setStep('content')}>
             ← Back

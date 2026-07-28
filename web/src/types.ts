@@ -145,6 +145,9 @@ export interface RoutingInfo {
   uncovered: string[]
   action: 'publish' | 'submit'
   can_publish: boolean
+  /** External publication is granted separately from internal. */
+  can_publish_external: boolean
+  external_uncovered: string[]
 }
 
 export interface Place {
@@ -168,10 +171,23 @@ export interface Taxonomy {
   roles: string[]
 }
 
+/** One reviewable submission, with why it's in your queue. */
+export interface ApprovalItem {
+  alert: Alert
+  countries: string[]
+  covered: string[]
+  uncovered: string[]
+  /** Only actionable because you're a Rights Manager and nobody's perimeter covers it. */
+  escalated: boolean
+  can_publish_external: boolean
+  external_uncovered: string[]
+}
+
 export interface ApprovalQueue {
   perimeter_label: string
   pending: number
-  alerts: Alert[]
+  escalated: number
+  items: ApprovalItem[]
 }
 
 export interface ExternalVariant {

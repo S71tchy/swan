@@ -201,6 +201,10 @@ class RoutingInfo(BaseModel):
     uncovered: list[str]
     action: str          # "publish" | "submit"
     can_publish: bool
+    # External publication is a separately-granted dimension; the form uses this
+    # to decide whether the client-facing options are offered.
+    can_publish_external: bool = False
+    external_uncovered: list[str] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #

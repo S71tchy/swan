@@ -805,9 +805,12 @@ export default function CreateAlert() {
 
       {showPublish && (
         <PublishDialogs
+          title={title}
           onCancel={() => setShowPublish(false)}
           onConfirm={handleConfirmPublish}
           busy={busy}
+          canExternal={routing?.can_publish_external ?? false}
+          externalUncovered={routing?.external_uncovered ?? []}
         />
       )}
     </div>

@@ -18,7 +18,13 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import Alert, User
 from app.notifications import service as notify
-from app.rights import can_publish_alert, routing_for_locations
+from app.rights import (
+    can_approve_alert,
+    can_publish_alert,
+    can_publish_external,
+    coverage_for,
+    routing_for_locations,
+)
 from app.serialize import alert_to_out
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -143,7 +149,7 @@ def update_alert(
     is_author = alert.author_id == user.id
     if is_author and alert.status in ("draft", "rejected"):
         pass
-    elif alert.status == "submitted" and can_publish_alert(db, user, alert):
+    elif alert.status == "submitted" and can_approve_alert(db, user, alert):
         pass
     else:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not editable in this state by you")
@@ -224,22 +230,45 @@ def publish_alert(
         raise HTTPException(status.HTTP_409_CONFLICT, "Alert cannot be published from its state")
     if not body.content_confirmed:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Content must be confirmed")
-    if not can_publish_alert(db, user, alert):
+
+    was_submitted = alert.status == "submitted"
+    # Approving someone else's submission allows the Rights-Manager escalation
+    # for orphaned alerts; publishing your own draft never does — an author who
+    # can't cover every location must submit it.
+    permitted = (
+        can_approve_alert(db, user, alert) if was_submitted else can_publish_alert(db, user, alert)
+    )
+    if not permitted:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "You don't hold internal publication rights for all locations",
         )
+
+    ext = body.external.model_dump()
+    # External publication is granted separately from internal (spec §4): holding
+    # the internal right for a country says nothing about the client-facing one.
+    if ext["mode"] != "none" and not can_publish_external(db, user, alert):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "You don't hold external publication rights for all locations",
+        )
     _require_ready_to_publish(alert)
 
-    was_submitted = alert.status == "submitted"
-    ext = body.external.model_dump()
+    # Record whether this went through the Rights-Manager escalation, so the
+    # audit trail shows who published outside their own perimeter and why.
+    escalated = bool(coverage_for(db, user, alert)["uncovered"])
+
     alert.visibility = "internal" if ext["mode"] == "none" else "internal_external"
     alert.external_variant = ext if ext["mode"] != "none" else None
     alert.status = "published"
     alert.published_at = _now()
     audit.record(
         db, user, "alert.published", alert.id,
-        detail={"visibility": alert.visibility, "external_mode": ext["mode"]},
+        detail={
+            "visibility": alert.visibility,
+            "external_mode": ext["mode"],
+            "escalated": escalated,
+        },
     )
     db.commit()
     db.refresh(alert)
@@ -265,7 +294,7 @@ def reject_alert(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Alert not found")
     if alert.status != "submitted":
         raise HTTPException(status.HTTP_409_CONFLICT, "Only submitted alerts can be rejected")
-    if not can_publish_alert(db, user, alert):
+    if not can_approve_alert(db, user, alert):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not in your approval perimeter")
     alert.status = "rejected"
     alert.rejection_comment = body.comment
