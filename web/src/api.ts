@@ -9,6 +9,7 @@ import type {
   CountryRef,
   DashboardStats,
   ExternalVariant,
+  OpenApiDoc,
   Place,
   PlaceInput,
   PlaceRow,
@@ -160,4 +161,15 @@ export const api = {
     req<TemplatePreview>(`/admin/templates/${key}/${locale}/preview`, { method: 'POST', body: JSON.stringify(body) }),
   adminTestTemplate: (key: string, locale: string, body: { subject: string; body: string; to?: string }) =>
     req<{ sent_to: string }>(`/admin/templates/${key}/${locale}/test`, { method: 'POST', body: JSON.stringify(body) }),
+
+  // the API's own OpenAPI document — FastAPI serves it under /api alongside the
+  // routes it describes, so it comes through the same proxy as everything else
+  openapi: () => req<OpenApiDoc>('/openapi.json'),
+}
+
+// Absolute doc URLs, for links that must open outside the SPA router.
+export const API_DOCS = {
+  swagger: `${BASE}/docs`,
+  redoc: `${BASE}/redoc`,
+  spec: `${BASE}/openapi.json`,
 }

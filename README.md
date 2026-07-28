@@ -59,7 +59,7 @@ uv run python -m app.seed     # create + seed the database (idempotent; wipes & 
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-API is now at http://localhost:8000 (interactive docs at `/docs`).
+API is now at http://localhost:8000 (interactive docs at `/api/docs`, ReDoc at `/api/redoc`, raw spec at `/api/openapi.json` — all reachable through the Vite dev proxy too, and linked from Settings → API & integrations).
 
 **2. Frontend** (`web/`):
 

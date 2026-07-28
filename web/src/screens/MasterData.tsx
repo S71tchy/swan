@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { api, ApiError } from '../api'
 import { useAuth } from '../auth'
-import { TopBar } from '../components/TopBar'
-import { LeftRail } from '../components/LeftRail'
-import { MapBackdrop } from '../components/MapBackdrop'
 import { Button } from '../components/ui'
 import { PlusIcon } from '../components/icons'
 import { LocationPinPicker } from '../components/LocationPinPicker'
 import { CountryFlag } from '../components/CountryFlag'
-import { Drawer, Field, inputStyle, AdminGate } from '../components/adminUi'
+import { AdminGate, AdminScreen, Drawer, Field, FormError, inputStyle, listPanelStyle } from '../components/adminUi'
 import type { CountryRef, PlaceRow } from '../types'
 
 type PlaceForm = { code: string; name: string; country: string; lat: number | null; lng: number | null; aliases: string }
@@ -110,11 +106,7 @@ function PlaceEditor({
           <LocationPinPicker lat={form.lat} lng={form.lng} onChange={(la, ln) => setForm((f) => ({ ...f, lat: la, lng: ln }))} height={210} />
         </div>
 
-        {error && (
-          <div style={{ borderRadius: 10, border: '1px solid rgba(207,69,39,.5)', background: 'rgba(207,69,39,.12)', padding: '10px 12px', font: '400 12px var(--font-body)', color: 'var(--sev-critical-text)' }}>
-            {error}
-          </div>
-        )}
+        {error && <FormError>{error}</FormError>}
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4 }}>
           <Button variant="primary" disabled={busy} onClick={save}>
@@ -135,7 +127,6 @@ function PlaceEditor({
 // --------------------------------------------------------------------------- //
 export default function MasterData() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [countries, setCountries] = useState<CountryRef[]>([])
   const [places, setPlaces] = useState<PlaceRow[]>([])
   const [query, setQuery] = useState('')
@@ -154,7 +145,7 @@ export default function MasterData() {
   }, [isManager])
 
   if (!user) return null
-  if (!isManager) return <AdminGate breadcrumb="Master data" />
+  if (!isManager) return <AdminGate breadcrumb="Settings · Locations" />
 
   async function savePlace(form: PlaceForm, isNew: boolean) {
     const aliases = form.aliases.split(',').map((a) => a.trim()).filter(Boolean)
@@ -184,48 +175,11 @@ export default function MasterData() {
     : places
 
   return (
-    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
-      <MapBackdrop opacity={0.45} blur={2} overlay="rgba(8,14,26,.5)" />
-      <TopBar breadcrumb="Master data" showCreate={false} />
-      <LeftRail />
-
-      <div
-        style={{
-          position: 'absolute',
-          left: 100,
-          right: 24,
-          top: 92,
-          bottom: 24,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}
-      >
-        {/* header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button
-            onClick={() => navigate('/admin')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '8px 14px',
-              borderRadius: 10,
-              border: '1px solid var(--border-soft)',
-              background: 'rgba(255,255,255,.05)',
-              color: 'var(--t-70)',
-              font: '600 12px var(--font-display)',
-            }}
-          >
-            ← Rights
-          </button>
-          <div>
-            <div style={{ font: '700 22px var(--font-display)', color: '#fff' }}>Master data · Locations</div>
-            <div style={{ font: '400 12px var(--font-body)', color: 'var(--t-50)' }}>
-              The gazetteer that powers alert-location search. Every change is audited.
-            </div>
-          </div>
-          <div style={{ flex: 1 }} />
+    <AdminScreen
+      title="Locations"
+      description="The gazetteer that powers alert-location search. Every change is audited."
+      actions={
+        <>
           <input
             placeholder="Search locations…"
             value={query}
@@ -239,20 +193,10 @@ export default function MasterData() {
             <PlusIcon size={13} stroke="var(--agl-navy)" />
             New location
           </Button>
-        </div>
-
-        {/* body */}
-        <div
-          className="scroll-y"
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            borderRadius: 18,
-            background: 'var(--glass-90)',
-            border: '1px solid var(--border-mid)',
-            backdropFilter: 'blur(18px)',
-          }}
-        >
+        </>
+      }
+    >
+        <div className="scroll-y" style={listPanelStyle}>
           <div
             style={{
               display: 'grid',
@@ -311,7 +255,6 @@ export default function MasterData() {
             </div>
           )}
         </div>
-      </div>
 
       {editPlace && (
         <PlaceEditor
@@ -324,6 +267,6 @@ export default function MasterData() {
           onDeleted={!editPlace.isNew ? () => deletePlace(editPlace.form.code) : undefined}
         />
       )}
-    </div>
+    </AdminScreen>
   )
 }

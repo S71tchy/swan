@@ -292,3 +292,18 @@ export interface TemplatePreview {
   subject: string
   body: string
 }
+
+// --- OpenAPI (Settings → API & integrations) ---
+// Only the slice of the OpenAPI 3.1 document the API page actually renders.
+export interface OpenApiOperation {
+  summary?: string
+  description?: string
+  tags?: string[]
+  deprecated?: boolean
+}
+
+export interface OpenApiDoc {
+  openapi: string
+  info: { title: string; version: string; description?: string }
+  paths: Record<string, Record<string, OpenApiOperation>>
+}

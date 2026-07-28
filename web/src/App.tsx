@@ -6,9 +6,13 @@ import Feed from './screens/Feed'
 import CreateAlert from './screens/CreateAlert'
 import Approvals from './screens/Approvals'
 import Profile from './screens/Profile'
-import RightsAdmin from './screens/RightsAdmin'
+import Settings from './screens/Settings'
+import AdminUsers from './screens/AdminUsers'
+import AdminProfiles from './screens/AdminProfiles'
 import MasterData from './screens/MasterData'
 import NotificationTemplates from './screens/NotificationTemplates'
+import ReferenceData from './screens/ReferenceData'
+import ApiDocs from './screens/ApiDocs'
 
 function FullBleedLoader() {
   return (
@@ -94,27 +98,62 @@ export default function App() {
           </RequireAuth>
         }
       />
+      {/* Settings: /admin is the hub, every section owns a route below it. */}
       <Route
         path="/admin"
         element={
           <RequireAuth>
-            <RightsAdmin />
+            <Settings />
           </RequireAuth>
         }
       />
       <Route
-        path="/admin/data"
+        path="/admin/users"
+        element={
+          <RequireAuth>
+            <AdminUsers />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/profiles"
+        element={
+          <RequireAuth>
+            <AdminProfiles />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/locations"
         element={
           <RequireAuth>
             <MasterData />
           </RequireAuth>
         }
       />
+      {/* previous name for the gazetteer — keep old links working */}
+      <Route path="/admin/data" element={<Navigate to="/admin/locations" replace />} />
       <Route
         path="/admin/templates"
         element={
           <RequireAuth>
             <NotificationTemplates />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/reference"
+        element={
+          <RequireAuth>
+            <ReferenceData />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/api"
+        element={
+          <RequireAuth>
+            <ApiDocs />
           </RequireAuth>
         }
       />

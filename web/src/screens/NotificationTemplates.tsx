@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { TopBar } from '../components/TopBar'
-import { LeftRail } from '../components/LeftRail'
-import { MapBackdrop } from '../components/MapBackdrop'
 import { Button } from '../components/ui'
-import { AdminGate } from '../components/adminUi'
+import { AdminGate, AdminScreen } from '../components/adminUi'
 import { RichTextEditor, type RichTextHandle } from '../components/RichTextEditor'
 import type { TemplateEntry, TemplatePreview } from '../types'
 
@@ -16,7 +12,6 @@ const KIND_LABEL: Record<string, string> = { broadcast: 'Subscription', transact
 
 export default function NotificationTemplates() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [templates, setTemplates] = useState<TemplateEntry[]>([])
   const [selectedKey, setSelectedKey] = useState<string>('')
   const [locale, setLocale] = useState<Locale>('en')
@@ -27,6 +22,10 @@ export default function NotificationTemplates() {
   const [busy, setBusy] = useState(false)
   const [sourceMode, setSourceMode] = useState(false)
   const [epoch, setEpoch] = useState(0) // bump to remount the rich editor
+  // Which selection `subject`/`body` currently hold. The rich editor reads its
+  // value once on mount, so it must not mount before the sync effect below has
+  // run — otherwise the first template opens with an empty body.
+  const [loadedFor, setLoadedFor] = useState('')
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const editorRef = useRef<RichTextHandle>(null)
   const focusRef = useRef<'subject' | 'body'>('body')
@@ -52,11 +51,12 @@ export default function NotificationTemplates() {
       setBody(localeData.body)
       setPreview(null)
       setMsg(null)
+      setLoadedFor(`${selectedKey}:${locale}`)
     }
   }, [selectedKey, locale, templates]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user) return null
-  if (!isManager) return <AdminGate breadcrumb="Notification templates" />
+  if (!isManager) return <AdminGate breadcrumb="Settings · Notification templates" />
 
   const dirty = !!localeData && (subject !== localeData.subject || body !== localeData.body)
 
@@ -147,23 +147,10 @@ export default function NotificationTemplates() {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--bg-deep)' }}>
-      <MapBackdrop opacity={0.45} blur={2} overlay="rgba(8,14,26,.5)" />
-      <TopBar breadcrumb="Notification templates" showCreate={false} />
-      <LeftRail />
-
-      <div style={{ position: 'absolute', left: 100, right: 24, top: 92, bottom: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button onClick={() => navigate('/admin')} style={backBtn}>← Rights</button>
-          <div>
-            <div style={{ font: '700 22px var(--font-display)', color: '#fff' }}>Notification templates</div>
-            <div style={{ font: '400 12px var(--font-body)', color: 'var(--t-50)' }}>
-              Edit the email copy for each event, in English and French. Tokens fill in per alert.
-            </div>
-          </div>
-        </div>
-
+    <AdminScreen
+      title="Notification templates"
+      description="Edit the email copy for each event, in English and French. Tokens fill in per alert."
+    >
         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, minHeight: 0 }}>
           {/* template list */}
           <div className="scroll-y" style={{ overflowY: 'auto', borderRadius: 16, background: 'var(--glass-90)', border: '1px solid var(--border-mid)', backdropFilter: 'blur(18px)', padding: 8 }}>
@@ -190,7 +177,7 @@ export default function NotificationTemplates() {
           </div>
 
           {/* editor */}
-          {entry && (
+          {entry && loadedFor === `${selectedKey}:${locale}` && (
             <div className="scroll-y" style={{ overflowY: 'auto', borderRadius: 16, background: 'var(--glass-90)', border: '1px solid var(--border-mid)', backdropFilter: 'blur(18px)', padding: 22, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ flex: 1 }}>
@@ -290,13 +277,6 @@ export default function NotificationTemplates() {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </AdminScreen>
   )
-}
-
-const backBtn: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10,
-  border: '1px solid var(--border-soft)', background: 'rgba(255,255,255,.05)',
-  color: 'var(--t-70)', font: '600 12px var(--font-display)', cursor: 'pointer',
 }

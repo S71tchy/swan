@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { TopBar } from '../components/TopBar'
 import { LeftRail } from '../components/LeftRail'
@@ -45,9 +45,11 @@ const rightsDot = (color: string) => (
 export default function Profile() {
   const { user, refresh, logout } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const [countries, setCountries] = useState<CountryRef[]>([])
   const [profiles, setProfiles] = useState<string[]>([])
   const [categories, setCategories] = useState<string[]>([])
+  const subsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void api.countries().then(setCountries).catch(() => setCountries([]))
@@ -56,6 +58,13 @@ export default function Profile() {
       setCategories(Object.keys(t.categories))
     }).catch(() => {})
   }, [])
+
+  // Settings → "My notifications" deep-links straight to the subscriptions card.
+  useEffect(() => {
+    if (params.get('section') === 'notifications') {
+      subsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [params])
 
   if (!user) return null
 
@@ -167,6 +176,7 @@ export default function Profile() {
             </div>
           </Card>
 
+          <div ref={subsRef} style={{ scrollMarginTop: 12 }}>
           <Card style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
               <SectionLabel>Email subscriptions</SectionLabel>
@@ -187,6 +197,7 @@ export default function Profile() {
               onChanged={refresh}
             />
           </Card>
+          </div>
         </div>
 
         {/* rights column */}
@@ -194,7 +205,7 @@ export default function Profile() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ font: '600 15px var(--font-display)', color: '#fff' }}>My rights</div>
             {r.is_rights_manager ? (
-              <Button variant="outline" onClick={() => navigate('/admin')} style={{ height: 34, padding: '0 14px', font: '600 12px var(--font-display)' }}>
+              <Button variant="outline" onClick={() => navigate('/admin/users')} style={{ height: 34, padding: '0 14px', font: '600 12px var(--font-display)' }}>
                 Manage users &amp; rights →
               </Button>
             ) : (
