@@ -11,6 +11,16 @@ export type AlertStatus =
 export type TransportMode = 'sea' | 'road' | 'air' | 'rail' | 'warehouse'
 export type Flow = 'import' | 'export' | 'both'
 
+/** How much of the map a location block covers.
+ *
+ * `point` is a specific place (port, border post, warehouse). `country` flags
+ * the whole nation — elections, national strikes, currency controls — and the
+ * dashboard paints the country polygon instead of relying on the pin alone.
+ * Scope lives on the *block*, not the alert, so one alert can carry
+ * "Nigeria nationwide, Road+Rail" alongside "Apapa, Sea" with their own modes.
+ */
+export type LocationScope = 'point' | 'country'
+
 export interface LocationBlock {
   name: string
   code: string
@@ -21,6 +31,8 @@ export interface LocationBlock {
   lng: number
   modes: TransportMode[]
   flow: Flow
+  /** Absent on alerts created before nationwide scope existed — treat as 'point'. */
+  scope?: LocationScope
 }
 
 export interface AlertAuthor {

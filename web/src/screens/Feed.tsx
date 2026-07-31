@@ -29,6 +29,7 @@ import {
   dayGroup,
   modesLabel,
   placeLabel,
+  locationLabel,
   alertSources,
 } from '../lib/format'
 import type { Alert, AlertStatus, Severity } from '../types'
@@ -145,7 +146,7 @@ function LocationSummary({ alert, size = 13 }: { alert: Alert; size?: number }) 
         <span style={{ font: '500 10px var(--font-display)', color: 'var(--t-40)' }}>+{countries.length - 3}</span>
       )}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {placeLabel(first.name)}
+        {locationLabel(first)}
         {extra > 0 && <span style={{ color: 'var(--t-40)' }}> +{extra} more</span>}
       </span>
     </span>
@@ -249,7 +250,7 @@ function FeedCard({ alert, q, onClick }: { alert: Alert; q: string; onClick: () 
         {alert.locations.slice(0, 2).map((l, i) => (
           <ChipOutline key={`${l.code}-${i}`} accent>
             <CountryFlag code={l.country} size={12} title={l.country_name} style={{ marginRight: 4 }} />
-            {placeLabel(l.name)}, {l.country}
+            {l.scope === 'country' ? locationLabel(l) : `${placeLabel(l.name)}, ${l.country}`}
           </ChipOutline>
         ))}
         {alert.locations.length > 2 && (

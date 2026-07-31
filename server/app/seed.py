@@ -45,7 +45,39 @@ def _place(name_fragment: str) -> dict:
 
 
 def loc(name_fragment: str, modes: list[str], flow: str = "both") -> dict:
-    return {**_place(name_fragment), "modes": modes, "flow": flow}
+    return {**_place(name_fragment), "modes": modes, "flow": flow, "scope": "point"}
+
+
+# Interior points for the countries used by nationwide seed alerts. The web app
+# holds the full 54-country table (web/src/lib/countries.ts); the seed only needs
+# the handful it references, and deliberately does not average the gazetteer —
+# that's ports only, so the centroid would land offshore.
+# Note the ordering: (lat, lng) here, matching the LocationBlock fields. The
+# web table uses [lng, lat] because that's what MapLibre/GeoJSON take.
+_COUNTRY_CENTRE: dict[str, tuple[float, float]] = {
+    "NG": (9.1, 8.7),
+    "ZA": (-29.0, 24.7),
+}
+
+
+def country_loc(country: str, modes: list[str], flow: str = "both") -> dict:
+    """A whole-country location block — elections, national strikes, currency
+    controls. The dashboard paints the country polygon for these instead of
+    relying on a single pin."""
+    meta = country_meta(country)
+    lat, lng = _COUNTRY_CENTRE[country]
+    return {
+        "name": meta["name"],
+        "code": f"{country}-NATIONWIDE",
+        "country": country,
+        "country_name": meta["name"],
+        "flag": meta["flag"],
+        "lat": lat,
+        "lng": lng,
+        "modes": modes,
+        "flow": flow,
+        "scope": "country",
+    }
 
 
 def reset(db) -> None:
@@ -247,6 +279,19 @@ def seed_alerts(db, u: dict[str, User]) -> None:
         locations=[loc("Beira", ["sea", "road"], "both")],
         urls=["https://gdacs.org/", "https://www.nhc.noaa.gov/"],
         author_id=u["nunes"].id, published_at=_dt(hours=6), submitted_at=_dt(hours=7),
+    )
+    # Nationwide scope: the whole country is the affected area, not one site.
+    add(
+        title="Presidential election — nationwide movement restrictions, Nigeria",
+        description="Federal election scheduled 22 Aug. Movement restrictions announced for polling day and the preceding night, with a heightened security posture through the results period.",
+        category="Political", sub_category="Election", severity="warning",
+        status="published", visibility="internal",
+        valid_from=TODAY, valid_to=TODAY + timedelta(days=24),
+        impacts="Inter-state road haulage suspended 21–22 Aug nationwide. Apapa and Tin Can gate operations reduced; customs at limited staffing through the results period. Domestic air freight schedules thinned.",
+        action_plan="Bring forward inland deliveries to 20 Aug. Hold outbound trucking over polling weekend. Confirm bonded storage cover in Lagos and Kano. Daily security review until results are declared.",
+        locations=[country_loc("NG", ["road", "rail", "air"], "both")],
+        urls=["https://www.inecnigeria.org/"],
+        author_id=u["traore"].id, published_at=_dt(hours=7), submitted_at=_dt(hours=9),
     )
     add(
         title="Anchorage queue at 19 vessels — Abidjan terminal",

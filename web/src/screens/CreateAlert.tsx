@@ -9,7 +9,8 @@ import { LocationPinPicker } from '../components/LocationPinPicker'
 import { PictureField } from '../components/PictureField'
 import { CountryFlag } from '../components/CountryFlag'
 import { SEVERITY_COLOR, MODE_GLYPH, MODE_LABEL, externalUrl } from '../lib/format'
-import type { CountryRef, ExternalVariant, Flow, LocationBlock, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
+import { CENTROID, nationwideCode } from '../lib/countries'
+import type { CountryRef, ExternalVariant, Flow, LocationBlock, LocationScope, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
 
 function slugCode(country: string, name: string): string {
   const base = name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'LOC'
@@ -372,9 +373,41 @@ function LocationBlockEditor({
   countries: CountryRef[]
   canPromote: boolean
 }) {
+  const isCountry = block.scope === 'country'
+
   function toggleMode(m: TransportMode) {
     const has = block.modes.includes(m)
     onChange({ ...block, modes: has ? block.modes.filter((x) => x !== m) : [...block.modes, m] })
+  }
+
+  /** Switching scope clears the place identity, because a port and a whole
+   *  country are not the same selection wearing different labels — carrying
+   *  "Apapa" over into a nationwide block would publish a mislabelled alert. */
+  function setScope(scope: LocationScope) {
+    if (scope === 'country') {
+      onChange({ ...block, scope, name: '', code: '', lat: undefined, lng: undefined })
+    } else {
+      onChange({ ...block, scope, name: '', code: '', country: '', country_name: '', flag: '' })
+    }
+  }
+
+  /** A nationwide block still needs coordinates — clustering, `flyTo` and map
+   *  search all assume every location has them — so it takes the country's
+   *  centroid and a shared synthetic code so repeats collapse to one marker. */
+  function setCountry(code: string) {
+    const cc = countries.find((c) => c.code === code)
+    const centre = CENTROID[code]
+    onChange({
+      ...block,
+      scope: 'country',
+      country: code,
+      country_name: cc?.name ?? code,
+      flag: cc?.flag ?? '',
+      name: cc?.name ?? code,
+      code: nationwideCode(code),
+      lat: centre?.[1],
+      lng: centre?.[0],
+    })
   }
   return (
     <div
@@ -397,24 +430,54 @@ function LocationBlockEditor({
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.6fr 1fr', gap: 14, alignItems: 'end' }}>
         <div>
-          <Label>Location{req}</Label>
-          <LocationPicker
-            value={block}
-            countries={countries}
-            canPromote={canPromote}
-            onPick={(p) =>
-              onChange({
-                ...block,
-                name: p.label,
-                code: p.code,
-                country: p.country,
-                country_name: p.country_name,
-                flag: p.flag,
-                lat: p.lat,
-                lng: p.lng,
-              })
-            }
-          />
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+            <Label>{isCountry ? 'Country' : 'Location'}{req}</Label>
+            <span
+              onClick={() => setScope(isCountry ? 'point' : 'country')}
+              style={{
+                font: '500 10.5px var(--font-body)',
+                color: 'var(--agl-yellow)',
+                cursor: 'pointer',
+                marginBottom: 6,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isCountry ? 'Use a specific place' : 'Flag a whole country'}
+            </span>
+          </div>
+          {isCountry ? (
+            <select
+              value={block.country ?? ''}
+              onChange={(e) => setCountry(e.target.value)}
+              style={{ ...fieldStyle, cursor: 'pointer' }}
+            >
+              <option value="">Select country…</option>
+              {countries.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name} ({c.code})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <LocationPicker
+              value={block}
+              countries={countries}
+              canPromote={canPromote}
+              onPick={(p) =>
+                onChange({
+                  ...block,
+                  scope: 'point',
+                  name: p.label,
+                  code: p.code,
+                  country: p.country,
+                  country_name: p.country_name,
+                  flag: p.flag,
+                  lat: p.lat,
+                  lng: p.lng,
+                })
+              }
+            />
+          )}
         </div>
         <div>
           <Label>Transport modes{req}</Label>
@@ -527,8 +590,10 @@ export default function CreateAlert() {
       .catch(() => setError('Could not load this alert for editing.'))
   }, [editId])
 
+  // Coordinates are part of "complete": the server requires lat/lng on every
+  // location block, so a half-filled block must not reach POST /alerts and 422.
   const completedLocations = useMemo(
-    () => locations.filter((l) => l.country && l.modes.length > 0),
+    () => locations.filter((l) => l.country && l.modes.length > 0 && l.lat != null && l.lng != null),
     [locations],
   )
 
@@ -556,6 +621,25 @@ export default function CreateAlert() {
 
   const mandatoryOk =
     title && category && subCategory && impacts && actionPlan && completedLocations.length > 0
+
+  /** What's still blocking the primary action.
+   *
+   * The button used to just sit greyed with no reason given, and the footer note
+   * beside it talked about publication routing instead — so an incomplete form
+   * looked like a rights problem. Location blocks are called out specifically
+   * because "pick a place" and "tick a transport mode" are two separate steps
+   * and the second is easy to miss.
+   */
+  const missing: string[] = []
+  if (!title) missing.push('a title')
+  if (!category) missing.push('a category')
+  else if (!subCategory) missing.push('a sub-category')
+  if (!impacts) missing.push('the business impact')
+  if (!actionPlan) missing.push('the action plan')
+  if (completedLocations.length === 0) {
+    const started = locations.find((l) => l.country)
+    missing.push(started ? 'a transport mode on the location' : 'a location')
+  }
 
   function buildPayload() {
     return {
@@ -903,6 +987,16 @@ export default function CreateAlert() {
           <span style={{ font: '400 11.5px var(--font-body)', color: 'var(--t-40)', flex: 1, minWidth: 220 }}>
             {error ? (
               <span style={{ color: 'var(--sev-critical-text)' }}>{error}</span>
+            ) : missing.length > 0 ? (
+              <>
+                Still needed:{' '}
+                <b style={{ color: 'var(--t-75)' }}>
+                  {missing.length === 1
+                    ? missing[0]
+                    : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`}
+                </b>
+                .
+              </>
             ) : routing && routing.uncovered.length > 0 ? (
               <>
                 You don't hold publication rights for{' '}

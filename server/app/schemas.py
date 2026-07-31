@@ -19,6 +19,18 @@ class LocationBlock(BaseModel):
     lng: float
     modes: list[str] = Field(default_factory=list)   # TransportMode values
     flow: str = "both"              # Flow value
+    # "point" = a specific place; "country" = the whole nation (elections,
+    # national strikes), which the dashboard paints as a filled polygon. Stored
+    # inside the `locations` JSON column, so this needed no migration. Defaults
+    # to "point" so alerts written before nationwide scope existed still load.
+    scope: str = "point"
+
+    @field_validator("scope")
+    @classmethod
+    def _check_scope(cls, value: str) -> str:
+        if value not in ("point", "country"):
+            raise ValueError("scope must be 'point' or 'country'")
+        return value
 
 
 # --------------------------------------------------------------------------- #

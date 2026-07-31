@@ -6,6 +6,7 @@ import {
   MODE_GLYPH,
   MODE_LABEL,
   placeLabel,
+  locationLabel,
   alertSources,
 } from '../lib/format'
 import { Avatar } from './Avatar'
@@ -161,7 +162,7 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
           {loc && (
             <ChipOutline accent>
               <CountryFlag code={loc.country} size={14} title={loc.country_name} style={{ marginRight: 5 }} />
-              {placeLabel(loc.name)}, {loc.country}
+              {loc.scope === 'country' ? locationLabel(loc) : `${placeLabel(loc.name)}, ${loc.country}`}
             </ChipOutline>
           )}
         </div>

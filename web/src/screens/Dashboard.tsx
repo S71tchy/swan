@@ -8,8 +8,8 @@ import { LeftRail } from '../components/LeftRail'
 import { MapSearch, matchAlerts } from '../components/MapSearch'
 import { AlertDetailPanel } from '../components/AlertDetailPanel'
 import { swanMapStyle } from '../lib/mapStyle'
-import { addDetailOverlay } from '../lib/mapOverlay'
-import { MARKER_SPEC, SEVERITY_COLOR, maxSeverity } from '../lib/format'
+import { addDetailOverlay, setNationwideHighlights } from '../lib/mapOverlay'
+import { MARKER_SPEC, SEVERITY_COLOR, SEVERITY_HEX, maxSeverity } from '../lib/format'
 import type { Alert, DashboardStats, Severity } from '../types'
 
 interface Cluster {
@@ -127,6 +127,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  // Layers can only be added after the style loads; alerts usually arrive first.
+  const [styleReady, setStyleReady] = useState(false)
 
   const clusters = useMemo(() => buildClusters(alerts), [alerts])
   const selected = alerts.find((a) => a.id === selectedId) ?? null
@@ -136,6 +138,25 @@ export default function Dashboard() {
     if (!searchQuery.trim()) return null
     return new Set(matchAlerts(alerts, searchQuery).map((a) => a.id))
   }, [alerts, searchQuery])
+
+  // ISO2 → colour for the nationwide country washes. Reduced to one colour per
+  // country by severity, the same way markers collapse: two alerts on Nigeria
+  // must paint one polygon, at the higher of the two severities — not two
+  // stacked translucent fills that read as a third colour.
+  const countryColours = useMemo(() => {
+    const worst: Record<string, Severity> = {}
+    for (const a of alerts) {
+      // Search dims the map; keep the washes in step with the markers.
+      if (matchedIds !== null && !matchedIds.has(a.id)) continue
+      for (const l of a.locations) {
+        if (l.scope !== 'country' || !l.country) continue
+        worst[l.country] = worst[l.country] ? maxSeverity(worst[l.country], a.severity) : a.severity
+      }
+    }
+    return Object.fromEntries(
+      Object.entries(worst).map(([cc, sev]) => [cc, SEVERITY_HEX[sev]]),
+    )
+  }, [alerts, matchedIds])
 
   const flyTo = useCallback((lng: number, lat: number, zoom = 5) => {
     mapRef.current?.flyTo({ center: [lng, lat], zoom, speed: 1.1 })
@@ -160,13 +181,23 @@ export default function Dashboard() {
       minZoom: 1.5,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.on('load', () => addDetailOverlay(map))
+    map.on('load', () => {
+      addDetailOverlay(map)
+      setStyleReady(true)
+    })
     mapRef.current = map
     return () => {
       map.remove()
       mapRef.current = null
     }
   }, [])
+
+  // Sync the nationwide country washes whenever the alert set or search changes
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !styleReady) return
+    setNationwideHighlights(map, countryColours)
+  }, [countryColours, styleReady])
 
   // Sync markers whenever clusters or selection change
   useEffect(() => {

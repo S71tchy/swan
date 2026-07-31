@@ -1,10 +1,22 @@
-import type { Flow, Severity, TransportMode } from '../types'
+import type { Flow, LocationScope, Severity, TransportMode } from '../types'
 
 export const SEVERITY_COLOR: Record<Severity, string> = {
   info: 'var(--sev-info)',
   watch: 'var(--sev-watch)',
   warning: 'var(--sev-warning)',
   critical: 'var(--sev-critical)',
+}
+
+/** Literal hex mirror of the severity ramp, for MapLibre.
+ *
+ * Map paint properties are evaluated by the GL renderer, not the CSS engine, so
+ * `var(--sev-*)` never resolves there. Keep these in step with the `--sev-*`
+ * tokens in styles/tokens.css — that file remains the source of truth. */
+export const SEVERITY_HEX: Record<Severity, string> = {
+  info: '#b2b4be',
+  watch: '#eed58e',
+  warning: '#ed8c00',
+  critical: '#cf4527',
 }
 
 // Feed badges use a light critical variant so the red text stays legible.
@@ -161,4 +173,14 @@ export function alertSources(urls: string[]): { href: string; label: string }[] 
  */
 export function placeLabel(name: string): string {
   return name.split(' — ')[0].replace(/\s*\([^)]*\)\s*$/, '').trim()
+}
+
+/** Display label for a location block, point or nationwide.
+ *
+ * A country-scoped block carries the country's own name, so without the
+ * qualifier "Nigeria" reads as if someone picked a place called Nigeria. The
+ * suffix is what tells a reader the whole country is affected, not one site. */
+export function locationLabel(loc: { name: string; country_name?: string; scope?: LocationScope }): string {
+  if (loc.scope === 'country') return `${loc.country_name || placeLabel(loc.name)} — nationwide`
+  return placeLabel(loc.name)
 }

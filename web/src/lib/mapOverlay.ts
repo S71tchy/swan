@@ -1,4 +1,6 @@
 import type maplibregl from 'maplibre-gl'
+import type { ExpressionSpecification } from 'maplibre-gl'
+import { ISO3 } from './countries'
 
 // Natural Earth detail overlay: admin-1 provinces (boundaries + labels) and
 // populated places (city dots + labels), filtered to Africa and simplified.
@@ -6,6 +8,119 @@ import type maplibregl from 'maplibre-gl'
 // fade in as you zoom, and MapLibre's collision detection thins city labels so
 // only the major ones show when zoomed out. Degrades gracefully offline (the
 // geojson simply doesn't load; the base map still renders).
+// --------------------------------------------------------------------------- #
+// Nationwide highlight
+//
+// Alerts scoped to a whole country paint that country's polygon. The polygons
+// are *already* in the map — lib/mapStyle.ts draws `land` and `coast` from the
+// demotiles `countries` source-layer — so this is two more layers on a source
+// that's already loaded: no extra data, no fetch, no token, no PostGIS.
+//
+// That layer identifies countries by `ADM0_A3` (Natural Earth's code, equal to
+// ISO3 for every sovereign African state). Its tiles stop at z6, but MapLibre
+// overzooms them, so the fill still renders across the dashboard's 1.5–8 range
+// with z6 border precision — invisible at country scale.
+//
+// Caveat worth knowing: Natural Earth splits Somaliland out of Somalia in some
+// builds, so a SO highlight may not cover the north-west. Nothing else in the
+// 54-state catalogue deviates.
+// --------------------------------------------------------------------------- #
+
+const FILL_LAYER = 'nationwide-fill'
+const LINE_LAYER = 'nationwide-line'
+
+/** Build the paint expression: each highlighted country gets its severity
+ *  colour, everything else stays fully transparent. */
+function colourByCountry(colours: Record<string, string>): ExpressionSpecification | string {
+  const entries = Object.entries(colours)
+  if (entries.length === 0) return 'rgba(0,0,0,0)'
+  // Built by spreading, which TS can't reconcile with the tuple shape the
+  // expression spec declares — the runtime form is exactly what MapLibre wants.
+  return [
+    'match',
+    ['get', 'ADM0_A3'],
+    ...entries.flatMap(([iso2, colour]) => [ISO3[iso2] ?? iso2, colour]),
+    'rgba(0,0,0,0)',
+  ] as unknown as ExpressionSpecification
+}
+
+/** Paint (or repaint) the nationwide country highlights.
+ *
+ * `colours` maps ISO2 → colour, already reduced to one colour per country by
+ * the caller (two alerts on one country must not stack two washes).
+ *
+ * The layers are inserted *below* the province lines and city labels so the
+ * wash never buries the map's own detail, and the fill is kept translucent so
+ * point markers sitting on top of a highlighted country stay readable.
+ */
+export function setNationwideHighlights(
+  map: maplibregl.Map,
+  colours: Record<string, string>,
+): void {
+  if (!map.getStyle()) return
+
+  if (!map.getLayer(FILL_LAYER)) {
+    // Insert beneath the detail overlay when it's already present, so the wash
+    // sits between the base land fill and the province/city detail.
+    const before = map.getLayer('ne-province-line') ? 'ne-province-line' : undefined
+    map.addLayer(
+      {
+        id: FILL_LAYER,
+        type: 'fill',
+        source: 'demotiles',
+        'source-layer': 'countries',
+        paint: { 'fill-color': colourByCountry(colours), 'fill-opacity': 0.22 },
+      },
+      before,
+    )
+    map.addLayer(
+      {
+        id: LINE_LAYER,
+        type: 'line',
+        source: 'demotiles',
+        'source-layer': 'countries',
+        paint: {
+          'line-color': colourByCountry(colours),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1.2, 5, 2.2, 8, 3],
+          'line-opacity': 0.9,
+        },
+      },
+      before,
+    )
+    return
+  }
+
+  map.setPaintProperty(FILL_LAYER, 'fill-color', colourByCountry(colours))
+  map.setPaintProperty(LINE_LAYER, 'line-color', colourByCountry(colours))
+  warnOnUnmatchedCountries(map, colours)
+}
+
+/** Dev-only: shout if a highlighted country matched no polygon.
+ *
+ * `ADM0_A3` is Natural Earth's code rather than a guaranteed ISO3, so a wrong
+ * entry in the ISO3 table fails *silently* — the country simply never paints,
+ * which is indistinguishable from "no alert there". This turns that into a
+ * console warning naming the country. Only meaningful once tiles are loaded,
+ * and only checks countries currently in view, so it never fires in production.
+ */
+function warnOnUnmatchedCountries(map: maplibregl.Map, colours: Record<string, string>): void {
+  if (!import.meta.env.DEV || !map.isSourceLoaded('demotiles')) return
+  const present = new Set(
+    map
+      .querySourceFeatures('demotiles', { sourceLayer: 'countries' })
+      .map((f) => f.properties?.ADM0_A3),
+  )
+  if (present.size === 0) return // no tiles decoded yet — nothing to conclude
+  const missing = Object.keys(colours).filter((iso2) => !present.has(ISO3[iso2] ?? iso2))
+  if (missing.length > 0) {
+    console.warn(
+      '[SWAN] Nationwide highlight matched no polygon for:',
+      missing.map((cc) => `${cc}→${ISO3[cc] ?? '?'}`).join(', '),
+      '— check the ISO3 table in lib/countries.ts against the tileset ADM0_A3 values.',
+    )
+  }
+}
+
 export function addDetailOverlay(map: maplibregl.Map): void {
   if (map.getSource('ne-provinces')) return // idempotent
 
