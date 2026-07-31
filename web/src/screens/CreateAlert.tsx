@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { MapBackdrop } from '../components/MapBackdrop'
-import { Button } from '../components/ui'
+import { Button, ModalBackdrop, ModalCard } from '../components/ui'
 import { PublishDialogs } from '../components/PublishDialogs'
 import { LocationPinPicker } from '../components/LocationPinPicker'
 import { PictureField } from '../components/PictureField'
@@ -72,6 +72,31 @@ function CustomPlaceForm({
   const [lng, setLng] = useState<number | null>(null)
   const [promote, setPromote] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [focus, setFocus] = useState<{ lat: number; lng: number; zoom: number } | null>(null)
+
+  // Choosing a country moves the map to it, so dropping a pin doesn't start
+  // from a whole-world view. The gazetteer is the only geography we have — the
+  // mean of its places in that country is a good enough centre, and countries
+  // with no places just leave the map where it is.
+  useEffect(() => {
+    if (!country) return setFocus(null)
+    let cancelled = false
+    void api
+      .places(country)
+      .then((places) => {
+        const inCountry = places.filter((p) => p.country === country)
+        if (cancelled || inCountry.length === 0) return
+        setFocus({
+          lat: inCountry.reduce((s, p) => s + p.lat, 0) / inCountry.length,
+          lng: inCountry.reduce((s, p) => s + p.lng, 0) / inCountry.length,
+          zoom: 4.6,
+        })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [country])
 
   const ready = name.trim() && country && lat != null && lng != null
 
@@ -102,39 +127,110 @@ function CustomPlaceForm({
   }
 
   return (
-    <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ font: '600 11px var(--font-display)', color: 'var(--t-60)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-        Add a place not in the master
-      </div>
-      <input
-        autoFocus
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Place name (e.g. Walvis Bay dry port)"
-        style={{ ...fieldStyle, height: 38 }}
-      />
-      <select value={country} onChange={(e) => setCountry(e.target.value)} style={{ ...fieldStyle, height: 38 }}>
-        <option value="">Select country…</option>
-        {countries.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.name} ({c.code})
-          </option>
-        ))}
-      </select>
-      <LocationPinPicker lat={lat} lng={lng} onChange={(la, ln) => { setLat(la); setLng(ln) }} height={170} />
-      {canPromote && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', font: '400 11.5px var(--font-body)', color: 'var(--t-65)' }}>
-          <input type="checkbox" checked={promote} onChange={(e) => setPromote(e.target.checked)} />
-          Also save to the location master (reusable by everyone)
-        </label>
-      )}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <Button variant="ghost" onClick={onCancel} style={{ height: 34 }}>Cancel</Button>
-        <Button variant="primary" disabled={!ready || busy} onClick={add} style={{ height: 34 }}>
-          Use this location
-        </Button>
-      </div>
-    </div>
+    <ModalBackdrop onClose={onCancel}>
+      <ModalCard width={720} style={{ padding: 0 }}>
+        <div style={{ padding: '20px 24px 14px', flex: 'none' }}>
+          <div style={{ font: '600 16px var(--font-display)', color: '#fff' }}>
+            Add a place not in the master
+          </div>
+          <div style={{ font: '400 12px var(--font-body)', color: 'var(--t-50)', marginTop: 3 }}>
+            Name it, pick its country, then click the map to drop the pin.
+          </div>
+        </div>
+
+        {/* Body scrolls if the viewport is short; the footer below never does. */}
+        <div
+          className="scroll-y"
+          style={{ flex: 1, minHeight: 0, padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <Label>Place name{req}</Label>
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Walvis Bay dry port"
+                style={{ ...fieldStyle, height: 42 }}
+              />
+            </div>
+            <div>
+              <Label>Country{req}</Label>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                style={{ ...fieldStyle, height: 42 }}
+              >
+                <option value="">Select country…</option>
+                {countries.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name} ({c.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <Label>Position{req}</Label>
+            <LocationPinPicker
+              lat={lat}
+              lng={lng}
+              onChange={(la, ln) => {
+                setLat(la)
+                setLng(ln)
+              }}
+              height={300}
+              focus={focus}
+            />
+          </div>
+
+          {canPromote && (
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                font: '400 11.5px var(--font-body)',
+                color: 'var(--t-65)',
+              }}
+            >
+              <input type="checkbox" checked={promote} onChange={(e) => setPromote(e.target.checked)} />
+              Also save to the location master (reusable by everyone)
+            </label>
+          )}
+        </div>
+
+        <div
+          style={{
+            flex: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '14px 24px 20px',
+            marginTop: 4,
+            borderTop: '1px solid var(--border-soft)',
+          }}
+        >
+          <div style={{ flex: 1, font: '400 11.5px var(--font-body)', color: 'var(--t-45)' }}>
+            {!name.trim()
+              ? 'Give the place a name to continue.'
+              : !country
+                ? 'Select a country to continue.'
+                : lat == null
+                  ? 'Click the map to drop the pin.'
+                  : `Pinned at ${(lat as number).toFixed(3)}, ${(lng as number).toFixed(3)}`}
+          </div>
+          <Button variant="ghost" onClick={onCancel} style={{ height: 36 }}>
+            Cancel
+          </Button>
+          <Button variant="primary" disabled={!ready || busy} onClick={add} style={{ height: 36 }}>
+            Use this location
+          </Button>
+        </div>
+      </ModalCard>
+    </ModalBackdrop>
   )
 }
 
@@ -179,7 +275,21 @@ function LocationPicker({
           <span style={{ color: 'var(--t-40)' }}>Search a place…</span>
         )}
       </div>
-      {open && (
+      {/* The add-a-place form is a centred modal, not part of this dropdown.
+          It's ~400px tall, and anchoring it under a field that sits low in a
+          scrolling form pushed its own Save button below the fold. Rendered
+          outside the dropdown so its fixed positioning isn't trapped in the
+          dropdown's stacking context. */}
+      {adding && (
+        <CustomPlaceForm
+          query={q}
+          countries={countries}
+          canPromote={canPromote}
+          onAdd={pick}
+          onCancel={() => setAdding(false)}
+        />
+      )}
+      {open && !adding && (
         <div
           style={{
             position: 'absolute',
@@ -195,62 +305,50 @@ function LocationPicker({
             width: 380,
           }}
         >
-          {adding ? (
-            <CustomPlaceForm
-              query={q}
-              countries={countries}
-              canPromote={canPromote}
-              onAdd={pick}
-              onCancel={() => setAdding(false)}
-            />
-          ) : (
-            <>
-              <input
-                autoFocus
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Type a port, city or border…"
-                style={{ ...fieldStyle, height: 40, borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border-soft)' }}
-              />
-              <div className="scroll-y" style={{ maxHeight: 200 }}>
-                {results.map((p) => (
-                  <div
-                    key={p.code}
-                    onClick={() => pick(p)}
-                    style={{
-                      padding: '10px 14px',
-                      cursor: 'pointer',
-                      font: '500 12.5px var(--font-body)',
-                      color: 'var(--t-80)',
-                      borderBottom: '1px solid rgba(255,255,255,.05)',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.05)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <CountryFlag code={p.country} size={14} style={{ marginRight: 6 }} />
-                    {p.label} · {p.country_name}
-                  </div>
-                ))}
-                {results.length === 0 && (
-                  <div style={{ padding: '10px 14px', color: 'var(--t-40)', font: '400 12px var(--font-body)' }}>
-                    No matches in the master
-                  </div>
-                )}
-              </div>
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Type a port, city or border…"
+            style={{ ...fieldStyle, height: 40, borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border-soft)' }}
+          />
+          <div className="scroll-y" style={{ maxHeight: 200 }}>
+            {results.map((p) => (
               <div
-                onClick={() => setAdding(true)}
+                key={p.code}
+                onClick={() => pick(p)}
                 style={{
-                  padding: '11px 14px',
+                  padding: '10px 14px',
                   cursor: 'pointer',
-                  borderTop: '1px solid var(--border-soft)',
-                  font: '600 12px var(--font-body)',
-                  color: 'var(--agl-yellow)',
+                  font: '500 12.5px var(--font-body)',
+                  color: 'var(--t-80)',
+                  borderBottom: '1px solid rgba(255,255,255,.05)',
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.05)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                + Add a place not listed…
+                <CountryFlag code={p.country} size={14} style={{ marginRight: 6 }} />
+                {p.label} · {p.country_name}
               </div>
-            </>
-          )}
+            ))}
+            {results.length === 0 && (
+              <div style={{ padding: '10px 14px', color: 'var(--t-40)', font: '400 12px var(--font-body)' }}>
+                No matches in the master
+              </div>
+            )}
+          </div>
+          <div
+            onClick={() => setAdding(true)}
+            style={{
+              padding: '11px 14px',
+              cursor: 'pointer',
+              borderTop: '1px solid var(--border-soft)',
+              font: '600 12px var(--font-body)',
+              color: 'var(--agl-yellow)',
+            }}
+          >
+            + Add a place not listed…
+          </div>
         </div>
       )}
     </div>

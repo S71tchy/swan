@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button } from './ui'
+import { Button, ModalBackdrop, ModalCard } from './ui'
 import type { ExternalVariant } from '../types'
 
 // Two-step publication confirmation (spec §5.4):
@@ -10,42 +10,10 @@ import type { ExternalVariant } from '../types'
 type Step = 'content' | 'external' | 'modify'
 type Choice = 'identical' | 'modified' | 'none'
 
-function Backdrop({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(6,11,20,.6)',
-        display: 'grid',
-        placeItems: 'center',
-        zIndex: 60,
-        animation: 'swanFadeIn .15s ease',
-      }}
-    >
-      {children}
-    </div>
-  )
-}
-
-function Card({ width = 520, children }: { width?: number; children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        width,
-        maxWidth: 'calc(100vw - 40px)',
-        borderRadius: 18,
-        background: 'var(--glass-97)',
-        border: '1px solid var(--border-strong)',
-        boxShadow: 'var(--shadow-modal)',
-        padding: 26,
-        animation: 'swanScaleIn .18s ease-out',
-      }}
-    >
-      {children}
-    </div>
-  )
-}
+// The shared overlay shell lives in ./ui — these dialogs, the add-a-place
+// modal and anything else that takes the screen use the same pair.
+const Backdrop = ModalBackdrop
+const Card = ModalCard
 
 interface Props {
   onCancel: () => void

@@ -10,11 +10,16 @@ export function LocationPinPicker({
   lng,
   onChange,
   height = 190,
+  focus,
 }: {
   lat: number | null
   lng: number | null
   onChange: (lat: number, lng: number) => void
   height?: number
+  /** Region to ease the map to — e.g. the chosen country, so the author isn't
+   *  hunting for a port from a whole-world view. Never moves the map once a pin
+   *  exists; the author has already framed the shot at that point. */
+  focus?: { lat: number; lng: number; zoom: number } | null
 }) {
   const container = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -46,6 +51,15 @@ export function LocationPinPicker({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !focus || hasPos) return
+    map.easeTo({ center: [focus.lng, focus.lat], zoom: focus.zoom, duration: 700 })
+    // hasPos is read but intentionally not a trigger: re-running on every pin
+    // move would yank the map back to the country centre mid-adjustment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.lat, focus?.lng, focus?.zoom])
 
   useEffect(() => {
     const map = mapRef.current

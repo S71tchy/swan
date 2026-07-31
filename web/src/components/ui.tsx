@@ -142,6 +142,62 @@ export function Button({
   )
 }
 
+/** Centred modal shell. Anything that takes over the screen for a focused
+ *  sub-task uses this pair, so overlays don't drift apart visually — and so a
+ *  tall form is never anchored to a control that might sit near the fold. */
+export function ModalBackdrop({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
+  return (
+    <div
+      onClick={onClose ? (e) => e.target === e.currentTarget && onClose() : undefined}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(6,11,20,.6)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 20,
+        zIndex: 60,
+        animation: 'swanFadeIn .15s ease',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+export function ModalCard({
+  width = 520,
+  children,
+  style,
+}: {
+  width?: number
+  children: ReactNode
+  style?: CSSProperties
+}) {
+  return (
+    <div
+      style={{
+        width,
+        maxWidth: 'calc(100vw - 40px)',
+        // Never taller than the viewport: the body scrolls internally instead,
+        // so the footer actions stay reachable without scrolling the page.
+        maxHeight: 'calc(100vh - 40px)',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRadius: 18,
+        background: 'var(--glass-97)',
+        border: '1px solid var(--border-strong)',
+        boxShadow: 'var(--shadow-modal)',
+        padding: 26,
+        animation: 'swanScaleIn .18s ease-out',
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
 export function GlassPanel({
   children,
   style,
