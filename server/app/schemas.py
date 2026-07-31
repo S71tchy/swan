@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # --------------------------------------------------------------------------- #
@@ -123,10 +123,31 @@ class AlertAuthor(BaseModel):
     branch: str
 
 
+# The alert picture is stored inline in `picture_url` as a `data:` URI (the
+# column is a plain string, so this needs no upload endpoint or file storage,
+# and swapping to object storage later just changes what string goes in).
+# The trade is that the picture ships with every alert payload, so the size
+# ceiling is enforced server-side too — the browser already downscales, but the
+# API is a public surface and a 50 MB row would degrade the whole feed.
+MAX_PICTURE_CHARS = 2_000_000  # ~1.5 MB decoded
+
+
+def _check_picture(value: str | None) -> str | None:
+    if value is None or value == "":
+        return None
+    if len(value) > MAX_PICTURE_CHARS:
+        raise ValueError("Picture is too large; upload a smaller image.")
+    if not value.startswith(("data:image/", "http://", "https://")):
+        raise ValueError("Picture must be an image data URI or an http(s) URL.")
+    return value
+
+
 class AlertBase(BaseModel):
     title: str
     description: str = ""
     picture_url: str | None = None
+
+    _validate_picture = field_validator("picture_url")(_check_picture)
     category: str
     sub_category: str = ""
     industry: str | None = None
@@ -159,7 +180,10 @@ class AlertUpdate(BaseModel):
     action_plan: str | None = None
     locations: list[LocationBlock] | None = None
     urls: list[str] | None = None
+    attachments: list[dict] | None = None
     clients: list[str] | None = None
+
+    _validate_picture = field_validator("picture_url")(_check_picture)
 
 
 class ExternalVariant(BaseModel):

@@ -114,6 +114,45 @@ export function dayGroup(iso: string | null): string {
   return 'Earlier'
 }
 
+/** Normalise a user-typed source URL into something safe to put in an href.
+ *
+ * Authors type bare hosts ("reuters.com/article") far more often than full
+ * URLs, and a bare host in an href resolves *relative to the app* — which is
+ * why the source link used to do nothing. Assume https when no scheme is
+ * given, and refuse anything that isn't http(s) so `javascript:` can't ride
+ * in through an alert field.
+ */
+export function externalUrl(raw: string): string | null {
+  const s = (raw ?? '').trim()
+  if (!s) return null
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`
+  try {
+    const u = new URL(candidate)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null
+  } catch {
+    return null
+  }
+}
+
+/** Short, human label for a source link — hostname without "www.". */
+export function urlLabel(raw: string): string {
+  const href = externalUrl(raw)
+  if (!href) return raw
+  return new URL(href).hostname.replace(/^www\./, '')
+}
+
+/** An alert's source URLs as openable links.
+ *
+ * Drops anything that isn't a usable http(s) link rather than render a dead
+ * affordance — a source the reader can't open is worse than no source line.
+ */
+export function alertSources(urls: string[]): { href: string; label: string }[] {
+  return urls.flatMap((raw) => {
+    const href = externalUrl(raw)
+    return href ? [{ href, label: urlLabel(raw) }] : []
+  })
+}
+
 /** Display name for a location block.
  *
  * Stored names carry disambiguators the UI doesn't need next to a country

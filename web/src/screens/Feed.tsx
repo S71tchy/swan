@@ -29,6 +29,7 @@ import {
   dayGroup,
   modesLabel,
   placeLabel,
+  alertSources,
 } from '../lib/format'
 import type { Alert, AlertStatus, Severity } from '../types'
 
@@ -162,6 +163,7 @@ function FeedCard({ alert, q, onClick }: { alert: Alert; q: string; onClick: () 
   // of the title, so it's only the fallback.
   const body = alert.impacts?.trim() || alert.description
   const bodyLabel = alert.impacts?.trim() ? 'Impact' : 'Summary'
+  const sources = alertSources(alert.urls)
 
   return (
     <div
@@ -181,8 +183,25 @@ function FeedCard({ alert, q, onClick }: { alert: Alert; q: string; onClick: () 
         transform: hover ? 'translateY(-1px)' : 'none',
         transition: 'background .12s, transform .12s',
         minWidth: 0,
+        overflow: 'hidden',
       }}
     >
+      {/* Picture band. Bleeds to the card edges by cancelling the card padding,
+          so it reads as part of the card rather than an inset thumbnail. */}
+      {alert.picture_url && (
+        <img
+          src={alert.picture_url}
+          alt=""
+          style={{
+            margin: '-14px -16px 0',
+            width: 'calc(100% + 32px)',
+            height: 132,
+            objectFit: 'cover',
+            display: 'block',
+          }}
+        />
+      )}
+
       {/* status row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
         <SeverityBadge severity={alert.severity} />
@@ -267,12 +286,31 @@ function FeedCard({ alert, q, onClick }: { alert: Alert; q: string; onClick: () 
           {alert.author.name}
           {alert.author.branch && <span style={{ color: 'var(--t-40)' }}> · {alert.author.branch}</span>}
         </span>
-        {alert.urls.length > 0 && (
+        {sources.length > 0 && (
           <>
             <span style={{ flex: 1 }} />
-            <span style={{ font: '500 10.5px var(--font-body)', color: 'var(--agl-yellow)', flex: 'none' }}>
-              {alert.urls.length} source{alert.urls.length > 1 ? 's' : ''} ↗
-            </span>
+            {/* The card itself opens the detail panel, so the source link has to
+                stop the click from bubbling or it would do both. */}
+            <a
+              href={sources[0].href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={sources[0].href}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                font: '500 10.5px var(--font-body)',
+                color: 'var(--agl-yellow)',
+                textDecoration: 'none',
+                flex: 'none',
+                maxWidth: 130,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {sources[0].label}
+              {sources.length > 1 ? ` +${sources.length - 1}` : ''} ↗
+            </a>
           </>
         )}
       </div>

@@ -6,6 +6,7 @@ import {
   MODE_GLYPH,
   MODE_LABEL,
   placeLabel,
+  alertSources,
 } from '../lib/format'
 import { Avatar } from './Avatar'
 import { CategoryChip, ChipOutline, SectionLabel, SeverityBadge } from './ui'
@@ -49,6 +50,7 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
         minute: '2-digit',
       })
     : ''
+  const sources = alertSources(alert.urls)
 
   return (
     <div
@@ -70,10 +72,12 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
         animation: 'swanSlideIn .25s ease-out',
       }}
     >
-      {/* header band */}
+      {/* Header band — the alert picture when there is one, otherwise the
+          gradient + track motif. Same height either way, so the panel doesn't
+          reflow between alerts that have a picture and ones that don't. */}
       <div
         style={{
-          height: 120,
+          height: alert.picture_url ? 168 : 120,
           background: 'linear-gradient(135deg,#1B365F,#0F2340)',
           position: 'relative',
           display: 'flex',
@@ -82,7 +86,26 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
           flex: 'none',
         }}
       >
-        <TrackMotif color={SEVERITY_COLOR[alert.severity]} />
+        {alert.picture_url ? (
+          <>
+            <img
+              src={alert.picture_url}
+              alt=""
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            {/* Scrim: the badge and chips sit on top of an arbitrary photo, so
+                they need a guaranteed dark backing to stay legible. */}
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(180deg,rgba(15,27,46,.15) 0%,rgba(15,27,46,.55) 55%,rgba(15,27,46,.92) 100%)',
+              }}
+            />
+          </>
+        ) : (
+          <TrackMotif color={SEVERITY_COLOR[alert.severity]} />
+        )}
         <button
           onClick={onClose}
           aria-label="Close"
@@ -90,10 +113,18 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
             position: 'absolute',
             top: 12,
             right: 14,
-            background: 'transparent',
+            // Over a photo the top of the scrim is deliberately light, so the
+            // control needs its own backing to stay findable.
+            width: 26,
+            height: 26,
+            borderRadius: 13,
+            display: 'grid',
+            placeItems: 'center',
+            background: alert.picture_url ? 'rgba(15,27,46,.55)' : 'transparent',
             border: 'none',
-            color: 'var(--t-55)',
-            font: '400 18px sans-serif',
+            color: alert.picture_url ? 'var(--t-80)' : 'var(--t-55)',
+            font: '400 15px sans-serif',
+            cursor: 'pointer',
           }}
         >
           ✕
@@ -172,10 +203,37 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
                   : `until ${fmtDate(alert.valid_to)}`}
               </div>
             </div>
-            {alert.urls.length > 0 && (
-              <span style={{ font: '500 11px var(--font-body)', color: 'var(--agl-yellow)', cursor: 'pointer' }}>
-                {alert.urls.length} source{alert.urls.length > 1 ? 's' : ''} ↗
-              </span>
+            {sources.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  gap: 3,
+                  maxWidth: 150,
+                }}
+              >
+                {sources.map((s) => (
+                  <a
+                    key={s.href}
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={s.href}
+                    style={{
+                      font: '500 11px var(--font-body)',
+                      color: 'var(--agl-yellow)',
+                      textDecoration: 'none',
+                      maxWidth: '100%',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {s.label} ↗
+                  </a>
+                ))}
+              </div>
             )}
           </div>
           {canClose && onCloseAlert && (

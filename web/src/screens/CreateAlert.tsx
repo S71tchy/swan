@@ -6,8 +6,9 @@ import { MapBackdrop } from '../components/MapBackdrop'
 import { Button } from '../components/ui'
 import { PublishDialogs } from '../components/PublishDialogs'
 import { LocationPinPicker } from '../components/LocationPinPicker'
+import { PictureField } from '../components/PictureField'
 import { CountryFlag } from '../components/CountryFlag'
-import { SEVERITY_COLOR, MODE_GLYPH, MODE_LABEL } from '../lib/format'
+import { SEVERITY_COLOR, MODE_GLYPH, MODE_LABEL, externalUrl } from '../lib/format'
 import type { CountryRef, ExternalVariant, Flow, LocationBlock, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
 
 function slugCode(country: string, name: string): string {
@@ -392,6 +393,7 @@ export default function CreateAlert() {
   const [impacts, setImpacts] = useState('')
   const [actionPlan, setActionPlan] = useState('')
   const [sourceUrl, setSourceUrl] = useState('')
+  const [pictureUrl, setPictureUrl] = useState<string | null>(null)
   const [routing, setRouting] = useState<RoutingInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -421,6 +423,7 @@ export default function CreateAlert() {
         setImpacts(a.impacts)
         setActionPlan(a.action_plan)
         setSourceUrl(a.urls[0] ?? '')
+        setPictureUrl(a.picture_url)
         setLocations(a.locations.length ? (a.locations as DraftLocation[]) : [emptyLocation()])
       })
       .catch(() => setError('Could not load this alert for editing.'))
@@ -459,6 +462,7 @@ export default function CreateAlert() {
   function buildPayload() {
     return {
       title,
+      picture_url: pictureUrl,
       category,
       sub_category: subCategory,
       industry: industry || null,
@@ -468,7 +472,9 @@ export default function CreateAlert() {
       impacts,
       action_plan: actionPlan,
       locations: completedLocations,
-      urls: sourceUrl ? [sourceUrl] : [],
+      // Store a canonical http(s) URL — authors type bare hosts, which are
+      // useless as an href on the reading side.
+      urls: sourceUrl.trim() ? [externalUrl(sourceUrl) ?? sourceUrl.trim()] : [],
       clients: [],
     }
   }
@@ -773,23 +779,8 @@ export default function CreateAlert() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                flex: 1,
-                height: 52,
-                borderRadius: 12,
-                border: '1.5px dashed rgba(255,255,255,.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                font: '400 12px var(--font-body)',
-                color: 'var(--t-45)',
-              }}
-            >
-              ⤒ Drop picture or attachments — PDF, images, docs
-            </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <PictureField value={pictureUrl} onChange={setPictureUrl} />
             <input
               value={sourceUrl}
               onChange={(e) => setSourceUrl(e.target.value)}
