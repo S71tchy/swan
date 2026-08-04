@@ -157,18 +157,12 @@ function CustomPlaceForm({
             </div>
             <div>
               <Label>Country{req}</Label>
-              <select
+              <CountrySelect
                 value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                style={{ ...fieldStyle, height: 42 }}
-              >
-                <option value="">Select country…</option>
-                {countries.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name} ({c.code})
-                  </option>
-                ))}
-              </select>
+                countries={countries}
+                onPick={setCountry}
+                listMaxHeight={148}
+              />
             </div>
           </div>
 
@@ -356,6 +350,202 @@ function LocationPicker({
   )
 }
 
+/** Strip diacritics and lowercase, so "cote" reaches "Côte d'Ivoire".
+ *
+ *  Nobody types the circumflex, and before the catalogue went worldwide the
+ *  accented names were a handful anyone could scroll past. At 238 they are not. */
+function fold(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+}
+
+/** Rank a country against a query, or -1 for no match.
+ *
+ *  Matching is by **word prefix, not substring**, for the same reason
+ *  `lib/alertSearch.ts` is: on this vocabulary substring is mostly noise —
+ *  "ind" would pull in Br*it*ish *Ind*ian Ocean Territory ahead of India, and
+ *  "oman" would surface R*oman*ia. Tokens are AND-ed so "south k" finds South
+ *  Korea. The score only orders the list; anything >= 0 is a real match.
+ */
+function scoreCountry(c: CountryRef, tokens: string[]): number {
+  const name = fold(c.name)
+  const code = c.code.toLowerCase()
+  const words = name.split(/[^a-z0-9]+/).filter(Boolean)
+  let score = 0
+  for (const t of tokens) {
+    if (code === t) score += 100
+    else if (name.startsWith(t)) score += 50
+    else if (words.some((w) => w.startsWith(t))) score += 20
+    else if (code.startsWith(t)) score += 10
+    else return -1
+  }
+  return score
+}
+
+/** Type-ahead country picker for nationwide blocks.
+ *
+ *  This was a plain `<select>` listing every country. That was workable at 54
+ *  and stopped being workable at 238 — a native select has no filtering, so
+ *  choosing Vietnam meant scrolling a 238-row list. It deliberately mirrors
+ *  `LocationPicker` above (same trigger, same anchored panel, same row shape):
+ *  the two sit in the *same field* under a scope toggle, so if they didn't
+ *  match, flipping the toggle would look like the form had changed shape.
+ *
+ *  Unlike LocationPicker this closes on outside-click and Escape. That picker
+ *  can only be reopened by clicking its own trigger; with a filter box holding
+ *  a query, leaving it open over the rest of the form is worse.
+ */
+function CountrySelect({
+  value,
+  countries,
+  onPick,
+  listMaxHeight = 200,
+}: {
+  value: string
+  countries: CountryRef[]
+  onPick: (code: string) => void
+  /** Shorter inside CustomPlaceForm: that modal's body is the scroll container,
+   *  and an absolutely-positioned panel is clipped by it rather than escaping. */
+  listMaxHeight?: number
+}) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [cursor, setCursor] = useState(0)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const selected = countries.find((c) => c.code === value)
+
+  const results = useMemo(() => {
+    const tokens = fold(q).split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return countries
+    return countries
+      .map((c) => ({ c, s: scoreCountry(c, tokens) }))
+      .filter((r) => r.s >= 0)
+      .sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name))
+      .map((r) => r.c)
+  }, [countries, q])
+
+  // Keep the highlight in range as the query narrows the list, or Enter fires
+  // on an index that no longer exists.
+  useEffect(() => setCursor(0), [q])
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  function choose(code: string) {
+    onPick(code)
+    setOpen(false)
+    setQ('')
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Escape') {
+      setOpen(false)
+      return
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const next = Math.min(
+        Math.max(cursor + (e.key === 'ArrowDown' ? 1 : -1), 0),
+        results.length - 1,
+      )
+      setCursor(next)
+      // The list scrolls internally, so the highlight has to be scrolled into
+      // view by hand or arrowing past the fold moves an invisible selection.
+      listRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+      return
+    }
+    if (e.key === 'Enter' && results[cursor]) {
+      e.preventDefault()
+      choose(results[cursor].code)
+    }
+  }
+
+  return (
+    <div style={{ position: 'relative' }} ref={wrapRef}>
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...fieldStyle, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+      >
+        {selected ? (
+          <>
+            <CountryFlag code={selected.code} size={16} />
+            <span>{selected.name}</span>
+          </>
+        ) : (
+          <>
+            🏳️ <span style={{ color: 'var(--t-40)' }}>Search a country…</span>
+          </>
+        )}
+      </div>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 48,
+            left: 0,
+            right: 0,
+            zIndex: 30,
+            borderRadius: 12,
+            background: 'var(--glass-97)',
+            border: '1px solid var(--border-strong)',
+            boxShadow: 'var(--shadow-panel)',
+            overflow: 'hidden',
+            width: 380,
+          }}
+        >
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Type a country name or code…"
+            style={{ ...fieldStyle, height: 40, borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border-soft)' }}
+          />
+          <div className="scroll-y" style={{ maxHeight: listMaxHeight }} ref={listRef}>
+            {results.map((c, i) => (
+              <div
+                key={c.code}
+                onClick={() => choose(c.code)}
+                onMouseEnter={() => setCursor(i)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  font: '500 12.5px var(--font-body)',
+                  color: c.code === value ? 'var(--agl-yellow)' : 'var(--t-80)',
+                  borderBottom: '1px solid rgba(255,255,255,.05)',
+                  background: i === cursor ? 'rgba(255,255,255,.05)' : 'transparent',
+                }}
+              >
+                <CountryFlag code={c.code} size={14} />
+                <span style={{ flex: 1 }}>{c.name}</span>
+                <span style={{ font: '500 11px var(--font-display)', color: 'var(--t-45)' }}>{c.code}</span>
+              </div>
+            ))}
+            {results.length === 0 && (
+              <div style={{ padding: '10px 14px', color: 'var(--t-40)', font: '400 12px var(--font-body)' }}>
+                No country matches “{q}”
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function LocationBlockEditor({
   block,
   onChange,
@@ -446,18 +636,7 @@ function LocationBlockEditor({
             </span>
           </div>
           {isCountry ? (
-            <select
-              value={block.country ?? ''}
-              onChange={(e) => setCountry(e.target.value)}
-              style={{ ...fieldStyle, cursor: 'pointer' }}
-            >
-              <option value="">Select country…</option>
-              {countries.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.name} ({c.code})
-                </option>
-              ))}
-            </select>
+            <CountrySelect value={block.country ?? ''} countries={countries} onPick={setCountry} />
           ) : (
             <LocationPicker
               value={block}
