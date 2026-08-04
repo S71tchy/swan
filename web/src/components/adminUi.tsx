@@ -256,7 +256,10 @@ export function CountryPicker({
 }) {
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
-  // Selected always visible; the rest filtered by the search box (54 countries).
+  // Selected always visible; the rest filtered by the search box. The catalogue
+  // went from 54 countries to 238 when SWAN went worldwide, so the filter is the
+  // primary way in — but selected chips must never be filtered out from under
+  // the user, or deselecting means clearing the box to find what they picked.
   const shown = countries.filter(
     (c) => selected.includes(c.code) || !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
   )

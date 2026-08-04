@@ -3,11 +3,11 @@ import type { ExpressionSpecification } from 'maplibre-gl'
 import { ISO3 } from './countries'
 
 // Natural Earth detail overlay: admin-1 provinces (boundaries + labels) and
-// populated places (city dots + labels), filtered to Africa and simplified.
-// Public-domain data bundled at /geo/*.geojson — no tiles token. Labels/dots
-// fade in as you zoom, and MapLibre's collision detection thins city labels so
-// only the major ones show when zoomed out. Degrades gracefully offline (the
-// geojson simply doesn't load; the base map still renders).
+// populated places (city dots + labels), worldwide. Public-domain data bundled
+// at /geo/*.geojson, rebuilt by `python ops/build_geo.py` — no tiles token.
+// Labels/dots fade in as you zoom, and MapLibre's collision detection thins city
+// labels so only the major ones show when zoomed out. Degrades gracefully
+// offline (the geojson simply doesn't load; the base map still renders).
 // --------------------------------------------------------------------------- #
 // Nationwide highlight
 //
@@ -16,14 +16,19 @@ import { ISO3 } from './countries'
 // demotiles `countries` source-layer — so this is two more layers on a source
 // that's already loaded: no extra data, no fetch, no token, no PostGIS.
 //
-// That layer identifies countries by `ADM0_A3` (Natural Earth's code, equal to
-// ISO3 for every sovereign African state). Its tiles stop at z6, but MapLibre
-// overzooms them, so the fill still renders across the dashboard's 1.5–8 range
-// with z6 border precision — invisible at country scale.
+// That layer identifies countries by `ADM0_A3` — Natural Earth's own code,
+// which is *not* always the ISO 3166-1 alpha-3 code (South Sudan: ISO `SSD`,
+// tiles `SDS`). The ISO3 table is generated straight from that field, see
+// lib/countries.ts. Its tiles stop at z6, but MapLibre overzooms them, so the
+// fill still renders across the dashboard's 1.5–8 range with z6 border
+// precision — invisible at country scale.
 //
-// Caveat worth knowing: Natural Earth splits Somaliland out of Somalia in some
-// builds, so a SO highlight may not cover the north-west. Nothing else in the
-// 54-state catalogue deviates.
+// Two caveats worth knowing. Natural Earth splits Somaliland out of Somalia in
+// some builds, so a SO highlight may not cover the north-west. And nine
+// microstates and territories (Vatican City, Nauru, Tuvalu, Gibraltar, Macau,
+// Anguilla, Saint Barthélemy, Pitcairn, US Minor Outlying Islands) have no
+// polygon at all in the world tile — they are sub-pixel at that scale, so a
+// nationwide highlight there paints nothing. Point-scope locations are fine.
 // --------------------------------------------------------------------------- #
 
 const FILL_LAYER = 'nationwide-fill'
@@ -61,8 +66,11 @@ export function setNationwideHighlights(
 
   if (!map.getLayer(FILL_LAYER)) {
     // Insert beneath the detail overlay when it's already present, so the wash
-    // sits between the base land fill and the province/city detail.
-    const before = map.getLayer('ne-province-line') ? 'ne-province-line' : undefined
+    // sits between the base land fill and the province/city detail. The province
+    // layers load lazily (see addDetailOverlay), so fall back to the city dots —
+    // otherwise the wash is added on top and buries every city label until the
+    // user happens to zoom in far enough to trigger the province fetch.
+    const before = ['ne-province-line', 'ne-city-point'].find((id) => map.getLayer(id))
     map.addLayer(
       {
         id: FILL_LAYER,
@@ -121,44 +129,16 @@ function warnOnUnmatchedCountries(map: maplibregl.Map, colours: Record<string, s
   }
 }
 
+/** Zoom at which the province boundaries first become visible.
+ *
+ * Must stay in step with the `line-opacity` ramp below, which is fully
+ * transparent until z3. Nothing is gained by fetching the file before this. */
+const PROVINCE_MIN_ZOOM = 3
+
 export function addDetailOverlay(map: maplibregl.Map): void {
-  if (map.getSource('ne-provinces')) return // idempotent
+  if (map.getSource('ne-cities')) return // idempotent
 
-  map.addSource('ne-provinces', { type: 'geojson', data: '/geo/africa_provinces.geojson' })
-  map.addSource('ne-cities', { type: 'geojson', data: '/geo/africa_cities.geojson' })
-
-  map.addLayer({
-    id: 'ne-province-line',
-    type: 'line',
-    source: 'ne-provinces',
-    paint: {
-      'line-color': '#3A5C89',
-      'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 1, 9, 1.4],
-      'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0, 4.2, 0.4, 6, 0.62],
-    },
-  })
-
-  map.addLayer({
-    id: 'ne-province-label',
-    type: 'symbol',
-    source: 'ne-provinces',
-    minzoom: 4.3,
-    layout: {
-      'text-field': ['coalesce', ['get', 'name'], ''],
-      'text-font': ['Open Sans Semibold'],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 4.5, 9, 7, 12],
-      'text-transform': 'uppercase',
-      'text-letter-spacing': 0.08,
-      'text-max-width': 7,
-      'text-padding': 6,
-    },
-    paint: {
-      'text-color': '#8AA0BE',
-      'text-halo-color': '#0B1729',
-      'text-halo-width': 1.2,
-      'text-opacity': ['interpolate', ['linear'], ['zoom'], 4.3, 0, 5, 0.85],
-    },
-  })
+  map.addSource('ne-cities', { type: 'geojson', data: '/geo/world_cities.geojson' })
 
   map.addLayer({
     id: 'ne-city-point',
@@ -203,4 +183,72 @@ export function addDetailOverlay(map: maplibregl.Map): void {
       'text-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0, 4.6, 1],
     },
   })
+
+  // Provinces are fetched on demand, cities are not. Worldwide admin-1 is 6.7 MB
+  // against the cities' 1.3 MB, and the dashboard opens at z2.4 where the
+  // boundaries are fully transparent — so eager-loading it would spend the
+  // biggest asset in the app on something nobody can see. Most sessions never
+  // zoom past a continent and never pay for it at all.
+  if (map.getZoom() >= PROVINCE_MIN_ZOOM) {
+    addProvinces(map)
+    return
+  }
+  const onZoom = () => {
+    if (map.getZoom() < PROVINCE_MIN_ZOOM) return
+    map.off('zoom', onZoom)
+    addProvinces(map)
+  }
+  map.on('zoom', onZoom)
+}
+
+/** Add the province boundary + label layers, beneath the city dots.
+ *
+ * `beforeId` matters: these arrive after the city layers rather than before
+ * them, so without it MapLibre stacks province labels on top of city labels and
+ * the two collide for space with the wrong one winning.
+ */
+function addProvinces(map: maplibregl.Map): void {
+  if (map.getSource('ne-provinces') || !map.getStyle()) return
+
+  map.addSource('ne-provinces', { type: 'geojson', data: '/geo/world_provinces.geojson' })
+  const before = map.getLayer('ne-city-point') ? 'ne-city-point' : undefined
+
+  map.addLayer(
+    {
+      id: 'ne-province-line',
+      type: 'line',
+      source: 'ne-provinces',
+      paint: {
+        'line-color': '#3A5C89',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 6, 1, 9, 1.4],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0, 4.2, 0.4, 6, 0.62],
+      },
+    },
+    before,
+  )
+
+  map.addLayer(
+    {
+      id: 'ne-province-label',
+      type: 'symbol',
+      source: 'ne-provinces',
+      minzoom: 4.3,
+      layout: {
+        'text-field': ['coalesce', ['get', 'name'], ''],
+        'text-font': ['Open Sans Semibold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 4.5, 9, 7, 12],
+        'text-transform': 'uppercase',
+        'text-letter-spacing': 0.08,
+        'text-max-width': 7,
+        'text-padding': 6,
+      },
+      paint: {
+        'text-color': '#8AA0BE',
+        'text-halo-color': '#0B1729',
+        'text-halo-width': 1.2,
+        'text-opacity': ['interpolate', ['linear'], ['zoom'], 4.3, 0, 5, 0.85],
+      },
+    },
+    before,
+  )
 }

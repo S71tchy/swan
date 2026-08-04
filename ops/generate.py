@@ -1,5 +1,14 @@
 """Generate the Neon grant SQL straight from app.reference, so the country and
-place lists can't drift from what the app validates against."""
+place lists can't drift from what the app validates against.
+
+Run from the repo root, with the server package importable:
+
+    PYTHONPATH=server python ops/generate.py ops/grant_admin_rights.sql ops/seed_places.sql
+
+The country list itself comes from app/country_data.py, which ops/build_geo.py
+generates from Natural Earth — so re-run build_geo.py first if the catalogue is
+what changed.
+"""
 import json
 import sys
 
@@ -86,7 +95,7 @@ w("")
 w("COMMIT;")
 w("")
 w("-- ---------------------------------------------------------------------")
-w("-- 3. Verify (should return 2 rows, both 54 / 54 / 54 / t / t / active).")
+w(f"-- 3. Verify (should return 2 rows, both {len(ALL)} / {len(ALL)} / {len(ALL)} / t / t / active).")
 w("-- ---------------------------------------------------------------------")
 w("SELECT")
 w("  email, name, status, role_label, can_create, is_rights_manager,")
