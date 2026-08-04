@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { CountryFlag } from './CountryFlag'
 import { SearchIcon } from './icons'
-import { SEVERITY_COLOR } from '../lib/format'
-import type { Alert, Place } from '../types'
+import { MODE_LABEL, SEVERITY_COLOR } from '../lib/format'
+import { SEARCH_HINTS, matchAlerts } from '../lib/alertSearch'
+import type { Alert, Place, TransportMode } from '../types'
 
 // Dashboard map search. Replaces the placeholder box that used to sit here —
 // it looked like a search field but had no input, state or handler.
@@ -11,6 +12,9 @@ import type { Alert, Place } from '../types'
 // Two result kinds: gazetteer LOCATIONS (fly the map there) and matching live
 // ALERTS (open the detail panel). While a query is active the dashboard dims
 // markers that don't match, so the map narrows as you type.
+//
+// The matcher itself lives in lib/alertSearch.ts because the dashboard needs
+// the identical predicate to decide which markers to dim.
 
 export interface MapSearchHandlers {
   onPickPlace: (p: Place) => void
@@ -18,17 +22,9 @@ export interface MapSearchHandlers {
   onQueryChange: (q: string) => void
 }
 
-/** Alerts whose title, location or country match the query. Exported so the
- *  dashboard dims the same set it would offer as results. */
-export function matchAlerts(alerts: Alert[], query: string): Alert[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return []
-  return alerts.filter((a) =>
-    [a.title, a.category, ...a.locations.flatMap((l) => [l.name, l.country_name, l.country])]
-      .join(' ')
-      .toLowerCase()
-      .includes(q),
-  )
+/** Distinct transport modes across an alert's blocks, for the result meta. */
+function modesOf(a: Alert): TransportMode[] {
+  return [...new Set(a.locations.flatMap((l) => l.modes))]
 }
 
 export function MapSearch({ alerts, onPickPlace, onPickAlert, onQueryChange }: MapSearchHandlers & { alerts: Alert[] }) {
@@ -113,7 +109,7 @@ export function MapSearch({ alerts, onPickPlace, onPickAlert, onQueryChange }: M
         <input
           ref={inputRef}
           value={query}
-          placeholder="Search country, city or port…"
+          placeholder="Search place, mode, severity, keyword…"
           onChange={(e) => {
             setQuery(e.target.value)
             setOpen(true)
@@ -205,22 +201,71 @@ export function MapSearch({ alerts, onPickPlace, onPickAlert, onQueryChange }: M
           ))}
 
           {alertHits.length > 0 && <GroupLabel>Alerts on the map</GroupLabel>}
-          {alertHits.map((a) => (
-            <ResultRow
-              key={a.id}
-              onClick={() => {
-                onPickAlert(a)
-                setOpen(false)
-              }}
-              leading={
-                <span
-                  style={{ width: 9, height: 9, borderRadius: '50%', background: SEVERITY_COLOR[a.severity], flex: 'none' }}
-                />
-              }
-              title={a.title}
-              meta={`${a.category} · ${a.locations.map((l) => l.country).join(', ')}`}
-            />
-          ))}
+          {alertHits.map((a) => {
+            const modes = modesOf(a)
+            return (
+              <ResultRow
+                key={a.id}
+                onClick={() => {
+                  onPickAlert(a)
+                  setOpen(false)
+                }}
+                leading={
+                  <span
+                    style={{ width: 9, height: 9, borderRadius: '50%', background: SEVERITY_COLOR[a.severity], flex: 'none' }}
+                  />
+                }
+                title={a.title}
+                // Mode and country are now searchable, so they belong on the row
+                // that a mode or country query returned.
+                meta={[
+                  a.category,
+                  [...new Set(a.locations.map((l) => l.country))].join(', '),
+                  modes.map((m) => MODE_LABEL[m]).join(' + '),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            )
+          })}
+
+          {/* The vocabulary is undiscoverable otherwise — nobody guesses that
+              "nationwide" or "critical" are things you can type at a map. */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 5,
+              padding: '9px 10px 5px',
+              marginTop: 4,
+              borderTop: '1px solid rgba(255,255,255,.07)',
+            }}
+          >
+            <span style={{ font: '400 10px var(--font-body)', color: 'var(--t-35)', marginRight: 2 }}>
+              Also try
+            </span>
+            {SEARCH_HINTS.map((h) => (
+              <button
+                key={h}
+                onClick={() => {
+                  setQuery(h)
+                  inputRef.current?.focus()
+                }}
+                style={{
+                  padding: '2px 7px',
+                  borderRadius: 11,
+                  cursor: 'pointer',
+                  font: '500 10px var(--font-body)',
+                  color: 'var(--t-55)',
+                  background: 'rgba(255,255,255,.05)',
+                  border: '1px solid var(--border-soft)',
+                }}
+              >
+                {h}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
