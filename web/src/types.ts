@@ -151,6 +151,13 @@ export interface DashboardStats {
   updated_at: string
 }
 
+/** Change stamp for the map's alert set. Polled instead of the feed itself,
+ *  which inlines every alert picture as a data URI (~130 KB for 13 alerts). */
+export interface LiveVersion {
+  version: string
+  count: number
+}
+
 export interface RoutingInfo {
   countries: string[]
   covered: string[]

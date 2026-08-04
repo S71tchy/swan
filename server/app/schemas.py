@@ -261,6 +261,21 @@ class DashboardStats(BaseModel):
     updated_at: datetime
 
 
+class LiveVersion(BaseModel):
+    """Change stamp for the map's alert set — what the dashboard polls.
+
+    Exists because the thing it guards is expensive: `GET /alerts?scope=map`
+    carries `picture_url` inline as a data URI (see AlertOut), so the live set
+    is ~130 KB for 13 alerts and grows with every illustrated alert. Polling
+    that on a timer would re-download every picture every minute. This is a few
+    dozen bytes, so the client polls it and only refetches the feed when
+    `version` actually moves.
+    """
+
+    version: str
+    count: int
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #

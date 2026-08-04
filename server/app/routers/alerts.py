@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -86,6 +87,31 @@ def list_alerts(
         alerts = [a for a in alerts if a.valid_to is None or a.valid_to >= today]
 
     return [alert_to_out(a) for a in alerts]
+
+
+# NOTE: must stay ABOVE `/{alert_id}` — FastAPI matches in declaration order,
+# so a literal GET path declared after the parameterised one is never reached.
+@router.get("/live-version", response_model=schemas.LiveVersion)
+def live_version(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """Cheap change stamp for the `scope=map` set, for polling.
+
+    Selects three columns rather than whole rows: the point is to be small and
+    fast enough to hit on a timer, which the feed itself is not (it inlines
+    every picture). The window is recomputed against today, so an alert
+    expiring or becoming valid changes the stamp with no write involved.
+    """
+    today = date.today()
+    rows = (
+        db.query(Alert.id, Alert.updated_at, Alert.valid_to)
+        .filter(Alert.status == "published", Alert.valid_from <= today)
+        .order_by(Alert.id)
+        .all()
+    )
+    live = [r for r in rows if r.valid_to is None or r.valid_to >= today]
+    digest = hashlib.sha256(
+        "|".join(f"{r.id}:{r.updated_at.isoformat() if r.updated_at else ''}" for r in live).encode()
+    ).hexdigest()[:16]
+    return schemas.LiveVersion(version=digest, count=len(live))
 
 
 @router.get("/{alert_id}", response_model=schemas.AlertOut)

@@ -9,6 +9,7 @@ import type {
   CountryRef,
   DashboardStats,
   ExternalVariant,
+  LiveVersion,
   OpenApiDoc,
   Place,
   PlaceInput,
@@ -91,6 +92,8 @@ export const api = {
   // alerts
   feed: (scope: 'published' | 'map' | 'mine' = 'published') =>
     req<Alert[]>(`/alerts?scope=${scope}`),
+  /** Change stamp for the map's alert set — tiny, safe to poll. See LiveVersion. */
+  liveVersion: () => req<LiveVersion>('/alerts/live-version'),
   alert: (id: string) => req<Alert>(`/alerts/${id}`),
   routing: (body: Partial<Alert>) =>
     req<RoutingInfo>('/alerts/routing', { method: 'POST', body: JSON.stringify(body) }),

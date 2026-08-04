@@ -117,6 +117,26 @@ function Segment({
 
 const SegDivider = () => <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border-soft)' }} />
 
+/** How often the map checks for new data. Cheap because it polls the change
+ *  stamp, not the feed — see the refresh block in Dashboard. */
+const REFRESH_MS = 60_000
+
+interface SyncState {
+  at: Date | null // last successful check
+  busy: boolean
+  failed: boolean
+}
+
+function agoLabel(at: Date | null): string {
+  if (!at) return 'connecting…'
+  const secs = Math.floor((Date.now() - at.getTime()) / 1000)
+  if (secs < 45) return 'updated just now'
+  const mins = Math.round(secs / 60)
+  if (mins < 60) return `updated ${mins} min ago`
+  const hrs = Math.round(mins / 60)
+  return `updated ${hrs} h ago`
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -130,6 +150,10 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   // Layers can only be added after the style loads; alerts usually arrive first.
   const [styleReady, setStyleReady] = useState(false)
+  const [sync, setSync] = useState<SyncState>({ at: null, busy: true, failed: false })
+  // Last stamp we hold data for. A ref, not state: changing it must never on its
+  // own trigger a render, or the poll re-renders the map every minute.
+  const versionRef = useRef<string | null>(null)
 
   const clusters = useMemo(() => buildClusters(alerts), [alerts])
   const selected = alerts.find((a) => a.id === selectedId) ?? null
@@ -163,10 +187,59 @@ export default function Dashboard() {
     mapRef.current?.flyTo({ center: [lng, lat], zoom, speed: 1.1 })
   }, [])
 
-  // Load data
+  // --------------------------------------------------------------------- //
+  // Live refresh
+  //
+  // The pill used to read a hardcoded "updated just now" over data fetched once
+  // on mount, so it claimed to be live while going stale for as long as the tab
+  // stayed open.
+  //
+  // The feed is too expensive to poll directly — it inlines every alert picture
+  // as a data URI (~130 KB for 13 alerts, and it grows per illustrated alert),
+  // so a naive 60s timer would re-download every photo every minute. Instead we
+  // poll `/alerts/live-version` (41 bytes) and only refetch when the stamp
+  // moves. A quiet map therefore costs ~40 bytes/min.
+  // --------------------------------------------------------------------- //
+  const refresh = useCallback(async (force = false) => {
+    setSync((s) => ({ ...s, busy: true }))
+    try {
+      const { version } = await api.liveVersion()
+      if (force || version !== versionRef.current) {
+        const [feed, dash] = await Promise.all([api.feed('map'), api.dashboard()])
+        versionRef.current = version
+        setAlerts(feed)
+        setStats(dash)
+      }
+      // Timestamp the successful *check*: with nothing changed the map is still
+      // current as of now, which is exactly what the indicator is claiming.
+      setSync({ at: new Date(), busy: false, failed: false })
+    } catch {
+      // Keep whatever is on screen — a failed poll must not blank the map.
+      setSync((s) => ({ ...s, busy: false, failed: true }))
+    }
+  }, [])
+
   useEffect(() => {
-    void api.feed('map').then(setAlerts).catch(() => setAlerts([]))
-    void api.dashboard().then(setStats).catch(() => setStats(null))
+    void refresh(true)
+    const id = setInterval(() => {
+      // Polling a tab nobody is looking at is pure waste; the visibility
+      // handler below catches it up the moment it comes back.
+      if (document.visibilityState === 'visible') void refresh()
+    }, REFRESH_MS)
+    const onVisible = () => document.visibilityState === 'visible' && void refresh()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refresh])
+
+  // Re-render the relative label on its own cadence, so "just now" ages into
+  // "3 min ago" without waiting for the next poll.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 15_000)
+    return () => clearInterval(id)
   }, [])
 
   // Init map once
@@ -225,8 +298,7 @@ export default function Dashboard() {
     if (!selected) return
     await api.close(selected.id)
     setSelectedId(null)
-    void api.feed('map').then(setAlerts)
-    void api.dashboard().then(setStats)
+    void refresh(true) // our own write — don't wait for the stamp to be noticed
   }
 
   const canClose =
@@ -342,7 +414,17 @@ export default function Dashboard() {
       </div>
 
       {/* Live pill */}
-      <div
+      {/* Click to refresh now; otherwise it refreshes itself every REFRESH_MS. */}
+      <button
+        onClick={() => void refresh(true)}
+        disabled={sync.busy}
+        title={
+          sync.failed
+            ? 'Last refresh failed — showing the most recent data. Click to retry.'
+            : sync.at
+              ? `Last checked ${sync.at.toLocaleTimeString()} · refreshes every ${REFRESH_MS / 1000}s · click to refresh now`
+              : 'Loading…'
+        }
         style={{
           position: 'absolute',
           left: 380,
@@ -357,11 +439,24 @@ export default function Dashboard() {
           alignItems: 'center',
           gap: 8,
           zIndex: 15,
+          cursor: sync.busy ? 'default' : 'pointer',
         }}
       >
-        <span className="glow-dot" style={{ width: 8, height: 8, background: 'var(--agl-orange)' }} />
-        <span style={{ font: '600 12px var(--font-display)', color: '#fff' }}>Live · updated just now</span>
-      </div>
+        <span
+          className={sync.busy || sync.failed ? undefined : 'glow-dot'}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: sync.failed ? 'var(--agl-grey)' : 'var(--agl-orange)',
+            opacity: sync.busy ? 0.5 : 1,
+            transition: 'opacity .2s',
+          }}
+        />
+        <span style={{ font: '600 12px var(--font-display)', color: '#fff' }}>
+          {sync.failed ? 'Reconnecting…' : `Live · ${agoLabel(sync.at)}`}
+        </span>
+      </button>
 
       {selected && (
         <AlertDetailPanel
