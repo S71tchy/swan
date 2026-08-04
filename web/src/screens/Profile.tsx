@@ -251,6 +251,14 @@ export default function Profile() {
                   </span>
                 </div>
               ))}
+              {user.perimeter.length === 0 && (
+                <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(255,255,255,.07)', font: '400 12px/1.6 var(--font-body)', color: 'var(--t-50)' }}>
+                  No publication rights granted — every location you create routes to approval.
+                </div>
+              )}
+            </div>
+            <div style={{ font: '400 11px/1.5 var(--font-body)', color: 'var(--t-45)', marginTop: 8 }}>
+              Only granted countries are listed. Anything not shown here routes to approval.
             </div>
           </div>
 

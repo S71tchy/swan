@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Alert, NotificationSubscription, User
-from app.reference import REGION_NEIGHBOURS, country_meta
+from app.models import Alert, NotificationSubscription, Profile, User
+from app.reference import country_meta
 from app.rights import (
     effective_external_countries,
     effective_internal_countries,
@@ -19,22 +19,33 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 def _perimeter_rows(db: Session, user: User) -> list[schemas.PerimeterRow]:
+    """The countries this user actually holds a right in — nothing else.
+
+    This table is read as a statement of fact about someone's rights, so it must
+    only ever list granted countries. It used to append `REGION_NEIGHBOURS` of
+    the home country as illustrative "Submit for approval" rows (a mock-fidelity
+    device): a ZA-only user was shown MZ and KE, which reads as two countries
+    granted out of nowhere. Everything absent from this table routes to approval
+    by definition, so the fiction bought nothing.
+    """
     internal = effective_internal_countries(db, user)
     external = effective_external_countries(db, user)
     explicit = set(user.internal_pub_countries or [])
+    # Attribute a profile-granted country to the profile that actually contains
+    # it, not merely to the first profile the user holds.
+    held = {
+        p.name: set(p.countries or [])
+        for p in db.query(Profile).filter(Profile.name.in_(user.profiles or [])).all()
+    }
 
     def source_for(code: str) -> str:
         if code in explicit:
             return "Explicit"
-        for profile in user.profiles or []:
-            return profile  # granted via first held profile
-        return "—"
+        granting = [name for name in (user.profiles or []) if code in held.get(name, ())]
+        return " · ".join(granting) if granting else "—"
 
-    # Rows: everything the user can publish, plus illustrative neighbours that
-    # route to approval so the "Submit for approval" state is visible.
-    neighbours = REGION_NEIGHBOURS.get(user.home_country, [])
     codes: list[str] = []
-    for c in sorted(internal) + list(external) + neighbours:
+    for c in sorted(internal) + sorted(external):
         if c not in codes:
             codes.append(c)
 

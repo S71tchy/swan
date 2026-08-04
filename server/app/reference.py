@@ -94,16 +94,6 @@ STANDARD_PROFILES: dict[str, dict] = {
     },
 }
 
-# Illustrative neighbours per home country, used to populate the profile-screen
-# "Submit for approval" rows for locations the user cannot publish.
-REGION_NEIGHBOURS: dict[str, list[str]] = {
-    "CI": ["NG", "GH"],
-    "MZ": ["ZA", "ZM"],
-    "ZA": ["MZ", "KE"],
-    "KE": ["TZ", "ZA"],
-    "NG": ["CI", "GH"],
-}
-
 # Gazetteer: geocoded places for the create-form location picker + seed markers.
 # Seeds the `places` master table; a Rights Manager can extend it at runtime.
 # (name, LOCODE-ish code, ISO2 country, lat, lng, [aliases])
