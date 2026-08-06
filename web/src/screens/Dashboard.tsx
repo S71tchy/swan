@@ -122,6 +122,19 @@ const SegDivider = () => <div style={{ width: 1, alignSelf: 'stretch', backgroun
  *  stamp, not the feed — see the refresh block in Dashboard. */
 const REFRESH_MS = 60_000
 
+/** Right-hand inset for the ticker when nothing else is open.
+ *
+ * MapLibre's zoom control sits bottom-right and reaches 39px in from the edge
+ * (measured, not guessed: two 29px buttons plus its own 10px margin). The
+ * ticker used to stop at 20px and ran underneath it, swallowing the top half of
+ * the "+" button. Keeping the buttons and shortening the strip is the better
+ * trade — they're the only discoverable way to zoom without a scroll wheel. */
+const ZOOM_CONTROL_INSET = 52
+
+/** Right-hand inset when the detail panel is open: its 380px plus its 20px
+ *  margin, so headlines stop at the panel's edge rather than sliding behind it. */
+const PANEL_INSET = 420
+
 interface SyncState {
   at: Date | null // last successful check
   busy: boolean
@@ -491,7 +504,7 @@ export default function Dashboard() {
         newIds={newIds}
         onPick={openAlert}
         left={600}
-        right={selected ? 420 : 20}
+        right={selected ? PANEL_INSET : ZOOM_CONTROL_INSET}
       />
 
       {selected && (
