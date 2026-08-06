@@ -6,7 +6,10 @@ import type {
   AdminUserRow,
   Alert,
   ApprovalQueue,
+  CategoryInput,
+  CategoryRow,
   CountryRef,
+  IndustryRow,
   DashboardStats,
   ExternalVariant,
   LiveVersion,
@@ -153,6 +156,28 @@ export const api = {
     req<Subscription>(`/admin/users/${userId}/subscriptions/${subId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   adminDeleteUserSubscription: (userId: string, subId: string) =>
     req<void>(`/admin/users/${userId}/subscriptions/${subId}`, { method: 'DELETE' }),
+
+  // admin — editable taxonomy (categories + industries)
+  adminCategories: () => req<CategoryRow[]>('/admin/categories'),
+  adminCreateCategory: (body: { name: string; sub_categories?: string[] }) =>
+    req<CategoryRow>('/admin/categories', { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdateCategory: (name: string, body: CategoryInput) =>
+    req<CategoryRow>(`/admin/categories/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  adminDeleteCategory: (name: string) =>
+    req<void>(`/admin/categories/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  adminIndustries: () => req<IndustryRow[]>('/admin/industries'),
+  adminCreateIndustry: (name: string) =>
+    req<IndustryRow>('/admin/industries', { method: 'POST', body: JSON.stringify({ name }) }),
+  adminUpdateIndustry: (name: string, body: { name?: string; position?: number }) =>
+    req<IndustryRow>(`/admin/industries/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  adminDeleteIndustry: (name: string) =>
+    req<void>(`/admin/industries/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
   // admin — email templates
   adminTemplates: () => req<TemplateEntry[]>('/admin/templates'),

@@ -431,6 +431,51 @@ class PlaceUpdate(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Editable taxonomy (categories / industries)
+# --------------------------------------------------------------------------- #
+class CategoryRow(BaseModel):
+    name: str
+    sub_categories: list[str]
+    position: int
+    usage: int                    # alerts using this category
+    sub_usage: dict[str, int]     # alerts per sub-category, so the UI can warn
+    subscriptions: int            # subscription filters naming this category
+
+
+class CategoryCreate(BaseModel):
+    name: str
+    sub_categories: list[str] = Field(default_factory=list)
+
+
+class CategoryUpdate(BaseModel):
+    # A new name renames the category and cascades it across alerts and
+    # subscription filters — see `_rename_category` in routers/admin.
+    name: str | None = None
+    sub_categories: list[str] | None = None
+    position: int | None = None
+    # {old: new} for sub-categories edited in place. Applied *before*
+    # `sub_categories` replaces the list, so an edited chip carries its alerts
+    # with it instead of reading as a delete plus an add (which is refused while
+    # the old value is still in use).
+    rename_sub: dict[str, str] | None = None
+
+
+class IndustryRow(BaseModel):
+    name: str
+    position: int
+    usage: int
+
+
+class IndustryCreate(BaseModel):
+    name: str
+
+
+class IndustryUpdate(BaseModel):
+    name: str | None = None
+    position: int | None = None
+
+
+# --------------------------------------------------------------------------- #
 # Email templates (admin editor)
 # --------------------------------------------------------------------------- #
 class TemplateLocaleData(BaseModel):

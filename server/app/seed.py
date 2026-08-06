@@ -8,10 +8,13 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.database import Base, SessionLocal, engine
+from app.enums import CATEGORIES, INDUSTRIES
 from app.models import (
     Alert,
     AuditLog,
+    Category,
     EmailTemplate,
+    Industry,
     NotificationSubscription,
     Place,
     Profile,
@@ -88,6 +91,23 @@ def reset(db) -> None:
     db.query(User).delete()
     db.query(Profile).delete()
     db.query(Place).delete()
+    db.query(Category).delete()
+    db.query(Industry).delete()
+    db.commit()
+
+
+def seed_taxonomy(db) -> None:
+    """Seed the editable taxonomy from the code lists.
+
+    `enums.CATEGORIES`/`INDUSTRIES` stay the source of the *initial* vocabulary,
+    exactly as `reference.PLACES` does for the gazetteer — after seeding, the
+    table is authoritative and Rights Managers own it. An empty table would mean
+    no alert could be categorised at all, so this must run for a usable install.
+    """
+    for i, (name, subs) in enumerate(CATEGORIES.items()):
+        db.add(Category(name=name, sub_categories=list(subs), position=i))
+    for i, name in enumerate(INDUSTRIES):
+        db.add(Industry(name=name, position=i))
     db.commit()
 
 
@@ -437,12 +457,15 @@ def main() -> None:
     db = SessionLocal()
     try:
         reset(db)
+        seed_taxonomy(db)
         seed_places(db)
         seed_profiles(db)
         users = seed_users(db)
         seed_subscriptions(db, users)
         seed_alerts(db, users)
         counts = {
+            "categories": db.query(Category).count(),
+            "industries": db.query(Industry).count(),
             "places": db.query(Place).count(),
             "profiles": db.query(Profile).count(),
             "users": db.query(User).count(),

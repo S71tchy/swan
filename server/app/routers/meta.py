@@ -8,7 +8,7 @@ from app import schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.enums import CATEGORIES, INDUSTRIES, ROLES, Flow, Severity, TransportMode
-from app.models import Alert, Place, User
+from app.models import Alert, Category, Industry, Place, User
 from app.reference import COUNTRY_CATALOGUE, STANDARD_PROFILES, country_meta
 from app.rights import pending_alerts_in_perimeter
 
@@ -16,11 +16,26 @@ router = APIRouter(tags=["meta"])
 
 
 @router.get("/meta/taxonomy")
-def taxonomy():
-    """Category tree, modes, flows, severities, industries for the create form."""
+def taxonomy(db: Session = Depends(get_db)):
+    """Category tree, modes, flows, severities, industries for the create form.
+
+    Categories and industries come from their tables, which Rights Managers edit
+    under Settings → Reference data. The code lists are the fallback for an
+    unseeded database only: an empty table would leave the create form with no
+    category to pick and therefore no way to raise an alert at all, which is the
+    same failure mode an empty `places` table has.
+
+    Modes, flows and severities stay in code on purpose — those are true enums
+    with behaviour hanging off them (map colours, subscription thresholds,
+    filter vocabulary), not labels.
+    """
+    rows = db.query(Category).order_by(Category.position, Category.name).all()
+    categories = {c.name: list(c.sub_categories or []) for c in rows} or CATEGORIES
+    industry_rows = db.query(Industry).order_by(Industry.position, Industry.name).all()
+    industries = [i.name for i in industry_rows] or INDUSTRIES
     return {
-        "categories": CATEGORIES,
-        "industries": INDUSTRIES,
+        "categories": categories,
+        "industries": industries,
         "modes": [m.value for m in TransportMode],
         "flows": [f.value for f in Flow],
         "severities": [s.value for s in Severity],

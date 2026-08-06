@@ -3,7 +3,7 @@ place lists can't drift from what the app validates against.
 
 Run from the repo root, with the server package importable:
 
-    PYTHONPATH=server python ops/generate.py ops/grant_admin_rights.sql ops/seed_places.sql
+    PYTHONPATH=server python ops/generate.py ops/grant_admin_rights.sql ops/seed_places.sql ops/seed_taxonomy.sql
 
 The country list itself comes from app/country_data.py, which ops/build_geo.py
 generates from Natural Earth — so re-run build_geo.py first if the catalogue is
@@ -12,6 +12,7 @@ what changed.
 import json
 import sys
 
+from app.enums import CATEGORIES, INDUSTRIES
 from app.reference import COUNTRY_CATALOGUE, PLACES, STANDARD_PROFILES
 
 USER_IDS = [
@@ -142,6 +143,49 @@ p.append("")
 
 places_sql = "\n".join(p)
 
+# ---- Part 3: the editable taxonomy -----------------------------------------
+# Categories and industries used to be Python constants; they are now tables a
+# Rights Manager owns (Settings → Reference data). enums.py stays the source of
+# the *initial* vocabulary, the same way reference.PLACES seeds the gazetteer.
+#
+# ON CONFLICT DO NOTHING, deliberately — unlike places, which DO UPDATE. Re-running
+# this must never revert an operator's rename back to the shipped wording, and a
+# rename here is not a typo fix: it has already been cascaded across every alert
+# and subscription filter, so putting the old name back would orphan all of them.
+t = []
+t.append("-- =====================================================================")
+t.append("--  SWAN — seed the editable taxonomy (categories + industries)")
+t.append("--  Empty tables = nothing to classify an alert with = no alert can be")
+t.append("--  created. Safe to re-run: existing rows are left exactly as they are,")
+t.append("--  so operator renames survive.")
+t.append("-- =====================================================================")
+t.append("")
+t.append("INSERT INTO categories (name, sub_categories, position, created_at) VALUES")
+crows = []
+for i, (cname, subs) in enumerate(CATEGORIES.items()):
+    crows.append(f"  ({q(cname)}, {lit(list(subs))}, {i}, (now() AT TIME ZONE 'utc'))")
+t.append(",\n".join(crows))
+t.append("ON CONFLICT (name) DO NOTHING;")
+t.append("")
+t.append("INSERT INTO industries (name, position, created_at) VALUES")
+irows = []
+for i, iname in enumerate(INDUSTRIES):
+    irows.append(f"  ({q(iname)}, {i}, (now() AT TIME ZONE 'utc'))")
+t.append(",\n".join(irows))
+t.append("ON CONFLICT (name) DO NOTHING;")
+t.append("")
+t.append(f"-- Verify: expect at least {len(CATEGORIES)} categories and {len(INDUSTRIES)} industries")
+t.append("SELECT (SELECT count(*) FROM categories) AS categories,")
+t.append("       (SELECT count(*) FROM industries) AS industries;")
+t.append("")
+
+taxonomy_sql = "\n".join(t)
+
 open(sys.argv[1], "w", encoding="utf-8").write(grant_sql)
 open(sys.argv[2], "w", encoding="utf-8").write(places_sql)
-print(f"countries={len(ALL)} profiles={len(STANDARD_PROFILES)} places={len(PLACES)}")
+if len(sys.argv) > 3:
+    open(sys.argv[3], "w", encoding="utf-8").write(taxonomy_sql)
+print(
+    f"countries={len(ALL)} profiles={len(STANDARD_PROFILES)} places={len(PLACES)} "
+    f"categories={len(CATEGORIES)} industries={len(INDUSTRIES)}"
+)

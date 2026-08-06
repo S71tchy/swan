@@ -17,7 +17,16 @@ from sqlalchemy.orm import Session
 from app import audit, schemas
 from app.database import get_db
 from app.deps import require_rights_manager
-from app.models import Alert, EmailTemplate, NotificationSubscription, Place, Profile, User
+from app.models import (
+    Alert,
+    Category,
+    EmailTemplate,
+    Industry,
+    NotificationSubscription,
+    Place,
+    Profile,
+    User,
+)
 from app.notifications import service as notify
 from app.notifications.templates import CATALOG, CATALOG_BY_KEY, default_template
 from app.reference import COUNTRY_CATALOGUE, country_meta
@@ -574,6 +583,294 @@ def delete_place(
         )
     audit.record(db, actor, "place.deleted", place.code, target_type="place", detail={"name": place.name})
     db.delete(place)
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Editable taxonomy: categories (+ sub-categories) and industries
+#
+# `Alert.category`, `Alert.sub_category` and `Alert.industry` are plain strings,
+# and `NotificationSubscription.categories` is a JSON list of category *names*.
+# Nothing is a foreign key, so the database will not keep these in step for us —
+# a rename that only touched the `categories` table would leave every historical
+# alert pointing at a name that no longer exists, and would silently stop every
+# subscription filtering on the old name from ever matching again. Nobody would
+# see an error; people would just quietly stop receiving alerts.
+#
+# So renames cascade, in the same transaction, and deletes are refused while
+# anything still references the value.
+# --------------------------------------------------------------------------- #
+def _clean_list(values: list[str] | None) -> list[str]:
+    """Trim, drop blanks, de-duplicate — preserving the order given."""
+    out: list[str] = []
+    for v in values or []:
+        v = (v or "").strip()
+        if v and v not in out:
+            out.append(v)
+    return out
+
+
+def _category_usage(alerts: list[Alert]) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for a in alerts:
+        if a.category:
+            usage[a.category] = usage.get(a.category, 0) + 1
+    return usage
+
+
+def _sub_usage(alerts: list[Alert], category: str) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for a in alerts:
+        if a.category == category and a.sub_category:
+            usage[a.sub_category] = usage.get(a.sub_category, 0) + 1
+    return usage
+
+
+def _industry_usage(alerts: list[Alert]) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for a in alerts:
+        if a.industry:
+            usage[a.industry] = usage.get(a.industry, 0) + 1
+    return usage
+
+
+def _subscription_usage(db: Session) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for sub in db.query(NotificationSubscription).all():
+        for name in sub.categories or []:
+            usage[name] = usage.get(name, 0) + 1
+    return usage
+
+
+def _category_row(c: Category, alerts: list[Alert], subs: dict[str, int]) -> schemas.CategoryRow:
+    return schemas.CategoryRow(
+        name=c.name,
+        sub_categories=list(c.sub_categories or []),
+        position=c.position,
+        usage=_category_usage(alerts).get(c.name, 0),
+        sub_usage=_sub_usage(alerts, c.name),
+        subscriptions=subs.get(c.name, 0),
+    )
+
+
+def _rename_category(db: Session, old: str, new: str) -> dict[str, int]:
+    """Point every stored reference at the new name. Returns what moved."""
+    moved_alerts = 0
+    for a in db.query(Alert).filter(Alert.category == old).all():
+        a.category = new
+        moved_alerts += 1
+    moved_subs = 0
+    for sub in db.query(NotificationSubscription).all():
+        names = list(sub.categories or [])
+        if old in names:
+            # Reassign rather than mutate in place: SQLAlchemy only reliably
+            # detects a change to a JSON column when the attribute is set.
+            sub.categories = [new if n == old else n for n in names]
+            moved_subs += 1
+    return {"alerts": moved_alerts, "subscriptions": moved_subs}
+
+
+@router.get("/categories", response_model=list[schemas.CategoryRow])
+def list_categories(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
+    rows = db.query(Category).order_by(Category.position, Category.name).all()
+    alerts = db.query(Alert).all()
+    subs = _subscription_usage(db)
+    return [_category_row(c, alerts, subs) for c in rows]
+
+
+@router.post("/categories", response_model=schemas.CategoryRow, status_code=status.HTTP_201_CREATED)
+def create_category(
+    body: schemas.CategoryCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A category name is required")
+    if db.get(Category, name):
+        raise HTTPException(status.HTTP_409_CONFLICT, "That category already exists")
+    last = db.query(Category).order_by(Category.position.desc()).first()
+    category = Category(
+        name=name,
+        sub_categories=_clean_list(body.sub_categories),
+        position=(last.position + 1) if last else 0,
+    )
+    db.add(category)
+    db.flush()
+    audit.record(
+        db, actor, "category.created", name, target_type="category",
+        detail={"sub_categories": category.sub_categories},
+    )
+    db.commit()
+    return _category_row(category, db.query(Alert).all(), _subscription_usage(db))
+
+
+@router.patch("/categories/{name}", response_model=schemas.CategoryRow)
+def update_category(
+    name: str,
+    body: schemas.CategoryUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    category = db.get(Category, name.strip())
+    if not category:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found")
+    updates = body.model_dump(exclude_unset=True)
+    detail: dict = {"fields": list(updates)}
+
+    # Sub-category renames are applied before the list is replaced, so that a
+    # chip edited in place carries its alerts with it instead of reading as
+    # "removed one, added another".
+    for old, new in (updates.get("rename_sub") or {}).items():
+        old, new = old.strip(), new.strip()
+        if not new or old == new:
+            continue
+        moved = 0
+        for a in db.query(Alert).filter(Alert.category == category.name, Alert.sub_category == old).all():
+            a.sub_category = new
+            moved += 1
+        detail.setdefault("sub_renames", {})[old] = {"to": new, "alerts": moved}
+
+    if updates.get("sub_categories") is not None:
+        wanted = _clean_list(updates["sub_categories"])
+        # Refuse to drop a sub-category that alerts still carry: the alert would
+        # keep a value the create form no longer offers, which reads as data rot.
+        in_use = _sub_usage(db.query(Alert).all(), category.name)
+        dropped = [s for s in (category.sub_categories or []) if s not in wanted and in_use.get(s)]
+        if dropped:
+            db.rollback()
+            listed = ", ".join(f"{s} ({in_use[s]})" for s in dropped)
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Still in use by existing alerts: {listed}. Rename it instead, "
+                "or reassign those alerts first.",
+            )
+        category.sub_categories = wanted
+
+    if updates.get("position") is not None:
+        category.position = int(updates["position"])
+
+    new_name = (updates.get("name") or "").strip()
+    if new_name and new_name != category.name:
+        if db.get(Category, new_name):
+            db.rollback()
+            raise HTTPException(status.HTTP_409_CONFLICT, "That category already exists")
+        moved = _rename_category(db, category.name, new_name)
+        detail["renamed_from"] = category.name
+        detail["cascaded"] = moved
+        category.name = new_name
+
+    audit.record(db, actor, "category.updated", category.name, target_type="category", detail=detail)
+    db.commit()
+    return _category_row(category, db.query(Alert).all(), _subscription_usage(db))
+
+
+@router.delete("/categories/{name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category(
+    name: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    category = db.get(Category, name.strip())
+    if not category:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found")
+    usage = _category_usage(db.query(Alert).all()).get(category.name, 0)
+    subs = _subscription_usage(db).get(category.name, 0)
+    if usage or subs:
+        parts = []
+        if usage:
+            parts.append(f"{usage} alert(s)")
+        if subs:
+            parts.append(f"{subs} notification subscription(s)")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{' and '.join(parts)} still reference this category. Rename it instead, "
+            "or clear those references first.",
+        )
+    audit.record(db, actor, "category.deleted", category.name, target_type="category", detail={})
+    db.delete(category)
+    db.commit()
+
+
+@router.get("/industries", response_model=list[schemas.IndustryRow])
+def list_industries(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
+    rows = db.query(Industry).order_by(Industry.position, Industry.name).all()
+    usage = _industry_usage(db.query(Alert).all())
+    return [
+        schemas.IndustryRow(name=i.name, position=i.position, usage=usage.get(i.name, 0))
+        for i in rows
+    ]
+
+
+@router.post("/industries", response_model=schemas.IndustryRow, status_code=status.HTTP_201_CREATED)
+def create_industry(
+    body: schemas.IndustryCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "An industry name is required")
+    if db.get(Industry, name):
+        raise HTTPException(status.HTTP_409_CONFLICT, "That industry already exists")
+    last = db.query(Industry).order_by(Industry.position.desc()).first()
+    industry = Industry(name=name, position=(last.position + 1) if last else 0)
+    db.add(industry)
+    db.flush()
+    audit.record(db, actor, "industry.created", name, target_type="industry", detail={})
+    db.commit()
+    return schemas.IndustryRow(name=industry.name, position=industry.position, usage=0)
+
+
+@router.patch("/industries/{name}", response_model=schemas.IndustryRow)
+def update_industry(
+    name: str,
+    body: schemas.IndustryUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    industry = db.get(Industry, name.strip())
+    if not industry:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Industry not found")
+    updates = body.model_dump(exclude_unset=True)
+    detail: dict = {"fields": list(updates)}
+    if updates.get("position") is not None:
+        industry.position = int(updates["position"])
+    new_name = (updates.get("name") or "").strip()
+    if new_name and new_name != industry.name:
+        if db.get(Industry, new_name):
+            raise HTTPException(status.HTTP_409_CONFLICT, "That industry already exists")
+        moved = 0
+        for a in db.query(Alert).filter(Alert.industry == industry.name).all():
+            a.industry = new_name
+            moved += 1
+        detail["renamed_from"] = industry.name
+        detail["cascaded"] = {"alerts": moved}
+        industry.name = new_name
+    audit.record(db, actor, "industry.updated", industry.name, target_type="industry", detail=detail)
+    db.commit()
+    usage = _industry_usage(db.query(Alert).all()).get(industry.name, 0)
+    return schemas.IndustryRow(name=industry.name, position=industry.position, usage=usage)
+
+
+@router.delete("/industries/{name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_industry(
+    name: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    industry = db.get(Industry, name.strip())
+    if not industry:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Industry not found")
+    usage = _industry_usage(db.query(Alert).all()).get(industry.name, 0)
+    if usage:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{usage} alert(s) still use this industry. Rename it instead, "
+            "or reassign those alerts first.",
+        )
+    audit.record(db, actor, "industry.deleted", industry.name, target_type="industry", detail={})
+    db.delete(industry)
     db.commit()
 
 

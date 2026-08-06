@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -50,6 +50,48 @@ class Place(Base):
     lat: Mapped[float] = mapped_column(Float)
     lng: Mapped[float] = mapped_column(Float)
     aliases: Mapped[list] = mapped_column(JSON, default=list)  # alternate search terms
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class Category(Base):
+    """Alert category + its dependent sub-categories (spec §5.2).
+
+    Seeded from `enums.CATEGORIES`, then owned by Rights Managers at runtime —
+    exactly like `places`, and for the same reason: operators meet event types
+    the original list never anticipated ("Cyber", "Labour dispute") and should
+    not need a deploy to record one.
+
+    `name` is the primary key rather than a surrogate id because that is what
+    `Alert.category` already stores — Phase 1 keeps these as plain strings, so
+    introducing a slug would mean migrating every historical alert. The cost is
+    that a rename has to be *cascaded* (see `_rename_category` in routers/admin),
+    since the name is also a value inside `NotificationSubscription.categories`.
+
+    `sub_categories` is a plain JSON list rather than its own table: it is only
+    ever read as "the children of this category", which is the shape the create
+    form and `/meta/taxonomy` both want.
+    """
+
+    __tablename__ = "categories"
+
+    name: Mapped[str] = mapped_column(String, primary_key=True)
+    sub_categories: Mapped[list] = mapped_column(JSON, default=list)
+    position: Mapped[int] = mapped_column(Integer, default=0)  # display order
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class Industry(Base):
+    """Industry label offered on an alert.
+
+    The safest of the three editable taxonomies: `Alert.industry` is the only
+    thing that references it, so a rename touches alerts and nothing else — no
+    subscription filters, no routing, no map behaviour.
+    """
+
+    __tablename__ = "industries"
+
+    name: Mapped[str] = mapped_column(String, primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

@@ -306,6 +306,33 @@ export interface PlaceInput {
   aliases?: string[]
 }
 
+// --- Editable taxonomy (Settings → Reference data) ---
+export interface CategoryRow {
+  name: string
+  sub_categories: string[]
+  position: number
+  /** Alerts carrying this category — a rename moves them, a delete is refused. */
+  usage: number
+  /** Alerts per sub-category, so the editor can name what blocks a removal. */
+  sub_usage: Record<string, number>
+  /** Notification subscriptions filtering on this name. The reason renames cascade. */
+  subscriptions: number
+}
+
+export interface CategoryInput {
+  name?: string
+  sub_categories?: string[]
+  position?: number
+  /** {old: new} for sub-categories edited in place; applied before the list swap. */
+  rename_sub?: Record<string, string>
+}
+
+export interface IndustryRow {
+  name: string
+  position: number
+  usage: number
+}
+
 // --- Email notification templates (admin editor) ---
 export interface TemplateLocaleData {
   subject: string
