@@ -115,6 +115,32 @@ option {
   color: #fff;
 }
 
+/* Live alert ticker.
+   Translating by -50% works because the item list is rendered twice: the second
+   copy has scrolled exactly into the first copy's starting position when the
+   animation loops, so the seam is invisible. Duration is set inline from the
+   measured content width, which keeps the speed constant in px/sec whether the
+   ticker is carrying three headlines or ten. */
+@keyframes swanTicker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Flash applied to a headline that arrived in the most recent poll. */
+@keyframes swanTickerNew {
+  0%,
+  60% {
+    background: var(--yellow-tint-soft, rgba(238, 213, 142, 0.16));
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 /* Shared animations from the mock */
 @keyframes swanPulse {
   0% {
@@ -191,5 +217,22 @@ option {
   border-radius: 4px;
 }
 .scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Horizontal twin, used by the ticker's reduced-motion fallback: with the
+   animation off it becomes a normal scrollable strip, and the default OS
+   scrollbar is far too heavy for a 40px glass pill. */
+.scroll-x {
+  overflow-x: auto;
+}
+.scroll-x::-webkit-scrollbar {
+  height: 6px;
+}
+.scroll-x::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+.scroll-x::-webkit-scrollbar-track {
   background: transparent;
 }

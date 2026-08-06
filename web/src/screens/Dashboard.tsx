@@ -6,6 +6,7 @@ import { useAuth } from '../auth'
 import { TopBar } from '../components/TopBar'
 import { LeftRail } from '../components/LeftRail'
 import { MapSearch } from '../components/MapSearch'
+import { AlertTicker } from '../components/AlertTicker'
 import { matchAlerts } from '../lib/alertSearch'
 import { AlertDetailPanel } from '../components/AlertDetailPanel'
 import { swanMapStyle } from '../lib/mapStyle'
@@ -158,6 +159,21 @@ export default function Dashboard() {
   const clusters = useMemo(() => buildClusters(alerts), [alerts])
   const selected = alerts.find((a) => a.id === selectedId) ?? null
 
+  // Ids that appeared in the most recent refresh, so the ticker can flash them.
+  // A ref holds the previous id set: it must not be state, or recording what we
+  // have just seen would trigger another render and immediately clear itself.
+  // Seeded on the first load so the opening ticker doesn't flash all ten.
+  const seenIdsRef = useRef<Set<string> | null>(null)
+  const [newIds, setNewIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    const ids = new Set(alerts.map((a) => a.id))
+    const seen = seenIdsRef.current
+    seenIdsRef.current = ids
+    if (seen === null) return // first load — everything is "new", so nothing is
+    const arrived = [...ids].filter((id) => !seen.has(id))
+    if (arrived.length) setNewIds(new Set(arrived))
+  }, [alerts])
+
   // Ids the current query matches; empty query means "no dimming at all".
   const matchedIds = useMemo(() => {
     if (!searchQuery.trim()) return null
@@ -186,6 +202,19 @@ export default function Dashboard() {
   const flyTo = useCallback((lng: number, lat: number, zoom = 5) => {
     mapRef.current?.flyTo({ center: [lng, lat], zoom, speed: 1.1 })
   }, [])
+
+  /** Open an alert: select it and bring the map to it.
+   *
+   * Shared by the map search and the ticker on purpose — picking an alert should
+   * mean the same thing wherever you picked it from. */
+  const openAlert = useCallback(
+    (a: Alert) => {
+      setSelectedId(a.id)
+      const loc = a.locations[0]
+      if (loc) flyTo(loc.lng, loc.lat, 5)
+    },
+    [flyTo],
+  )
 
   // --------------------------------------------------------------------- //
   // Live refresh
@@ -316,11 +345,7 @@ export default function Dashboard() {
             alerts={alerts}
             onQueryChange={setSearchQuery}
             onPickPlace={(p) => flyTo(p.lng, p.lat, 6)}
-            onPickAlert={(a) => {
-              setSelectedId(a.id)
-              const loc = a.locations[0]
-              if (loc) flyTo(loc.lng, loc.lat, 5)
-            }}
+            onPickAlert={openAlert}
           />
         }
       />
@@ -457,6 +482,17 @@ export default function Dashboard() {
           {sync.failed ? 'Reconnecting…' : `Live · ${agoLabel(sync.at)}`}
         </span>
       </button>
+
+      {/* Live ticker. Starts clear of the legend and the Live pill, and yields
+          the right-hand 400px when the detail panel is open so headlines never
+          scroll underneath it. */}
+      <AlertTicker
+        alerts={alerts}
+        newIds={newIds}
+        onPick={openAlert}
+        left={600}
+        right={selected ? 420 : 20}
+      />
 
       {selected && (
         <AlertDetailPanel
