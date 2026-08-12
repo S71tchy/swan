@@ -169,8 +169,9 @@ export default function Approvals() {
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [draft, setDraft] = useState<{ title: string; impacts: string; action_plan: string }>({
+  const [draft, setDraft] = useState<{ title: string; description: string; impacts: string; action_plan: string }>({
     title: '',
+    description: '',
     impacts: '',
     action_plan: '',
   })
@@ -214,7 +215,12 @@ export default function Approvals() {
 
   function startEdit() {
     if (!selected) return
-    setDraft({ title: selected.title, impacts: selected.impacts, action_plan: selected.action_plan })
+    setDraft({
+      title: selected.title,
+      description: selected.description,
+      impacts: selected.impacts,
+      action_plan: selected.action_plan,
+    })
     setError(null)
     setEditing(true)
   }
@@ -403,7 +409,20 @@ export default function Approvals() {
                 <div style={{ font: '600 20px/1.35 var(--font-display)', color: '#fff' }}>{selected.title}</div>
               )}
 
-              <div style={{ font: '400 13px/1.65 var(--font-body)', color: 'var(--t-75)' }}>{selected.description}</div>
+              {/* An approver who can reword the title, impact and action plan
+                  but not the description would be editing around the one field
+                  that carries the event's own timing (spec §5.2). */}
+              {editing ? (
+                <textarea
+                  value={draft.description}
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  style={{ height: 84, borderRadius: 12, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-strong)', padding: 12, color: '#fff', font: '400 13px/1.65 var(--font-body)', resize: 'none', outline: 'none' }}
+                />
+              ) : (
+                selected.description?.trim() && (
+                  <div style={{ font: '400 13px/1.65 var(--font-body)', color: 'var(--t-75)' }}>{selected.description}</div>
+                )
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {editing ? (

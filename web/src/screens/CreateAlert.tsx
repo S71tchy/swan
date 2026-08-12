@@ -726,6 +726,7 @@ export default function CreateAlert() {
   const [category, setCategory] = useState('')
   const [subCategory, setSubCategory] = useState('')
   const [industry, setIndustry] = useState('')
+  const [description, setDescription] = useState('')
   const [severity, setSeverity] = useState<Severity>('warning')
   const [validFrom, setValidFrom] = useState(() => new Date().toISOString().slice(0, 10))
   const [validTo, setValidTo] = useState('')
@@ -754,6 +755,7 @@ export default function CreateAlert() {
       .alert(editId)
       .then((a) => {
         setTitle(a.title)
+        setDescription(a.description)
         setCategory(a.category)
         setSubCategory(a.sub_category)
         setIndustry(a.industry ?? '')
@@ -799,7 +801,7 @@ export default function CreateAlert() {
   const subCategories = category && taxonomy ? taxonomy.categories[category] ?? [] : []
 
   const mandatoryOk =
-    title && category && subCategory && impacts && actionPlan && completedLocations.length > 0
+    title && description && category && subCategory && impacts && actionPlan && completedLocations.length > 0
 
   /** What's still blocking the primary action.
    *
@@ -811,6 +813,7 @@ export default function CreateAlert() {
    */
   const missing: string[] = []
   if (!title) missing.push('a title')
+  if (!description) missing.push('a description')
   if (!category) missing.push('a category')
   else if (!subCategory) missing.push('a sub-category')
   if (!impacts) missing.push('the business impact')
@@ -823,6 +826,7 @@ export default function CreateAlert() {
   function buildPayload() {
     return {
       title,
+      description,
       picture_url: pictureUrl,
       category,
       sub_category: subCategory,
@@ -1003,6 +1007,22 @@ export default function CreateAlert() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Short, specific headline"
               style={{ ...fieldStyle, height: 46 }}
+            />
+          </div>
+
+          {/* Description is where the EVENT's own timing lives (spec §5.2):
+              valid_from controls when the alert appears on the map, not when
+              the event happens, so "landfall expected within 72 hours" has
+              nowhere else to go. Kept a plain textarea rather than the
+              RichTextEditor — Feed, Approvals and the detail panel all render
+              this as text, so HTML would show up as escaped markup. */}
+          <div>
+            <Label>Description{req}</Label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What is happening, and when — the event itself, in a few sentences…"
+              style={{ ...fieldStyle, height: 84, padding: '12px 14px', resize: 'none', lineHeight: 1.55 }}
             />
           </div>
 

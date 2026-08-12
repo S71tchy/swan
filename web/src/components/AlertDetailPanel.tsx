@@ -167,6 +167,19 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
           )}
         </div>
 
+        {/* Spec §5.3 lists description in the detail panel, between the
+            category/location chips and Impact. Guarded on being non-empty:
+            every alert created before the form had a Description field has
+            an empty one, and a labelled empty section reads as a bug. */}
+        {alert.description?.trim() && (
+          <div>
+            <SectionLabel style={{ marginBottom: 5 }}>Description</SectionLabel>
+            <div style={{ font: '400 12.5px/1.6 var(--font-body)', color: 'var(--t-80)' }}>
+              {alert.description}
+            </div>
+          </div>
+        )}
+
         <div>
           <SectionLabel style={{ marginBottom: 5 }}>Impact</SectionLabel>
           <div style={{ font: '400 12.5px/1.6 var(--font-body)', color: 'var(--t-80)' }}>
