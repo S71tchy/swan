@@ -38,7 +38,7 @@ from app.rights import (
     is_rights_manager,
 )
 from app.security import hash_password
-from app.subscriptions import apply_subscription
+from app.subscriptions import apply_subscription, default_subscriptions, ensure_manager_subscription
 
 _MIN_PASSWORD_LEN = 6
 
@@ -248,6 +248,9 @@ def create_user(
     )
     db.add(user)
     db.flush()
+    # Same defaults a self-registered account gets (see routers/auth.register).
+    for sub in default_subscriptions(user.id, is_manager=is_rights_manager(db, user)):
+        db.add(sub)
     audit.record(
         db, actor, "user.created", user.id, target_type="user",
         detail={"email": user.email, "grants": _user_snapshot(user)},
@@ -312,6 +315,10 @@ def update_user(
         user.profiles = _validate_profiles(db, updates["profiles"])
     if "is_rights_manager" in updates and updates["is_rights_manager"] is not None:
         user.is_rights_manager = updates["is_rights_manager"]
+    # Promotion has to bring the registrations subscription with it, or the new
+    # manager silently never hears about an account awaiting validation.
+    if is_rights_manager(db, user):
+        ensure_manager_subscription(db, user)
     if "status" in updates and updates["status"] is not None:
         new_status = updates["status"].strip().lower()
         if new_status not in _USER_STATUSES:

@@ -181,9 +181,38 @@ export default function Profile() {
             <div>
               <SectionLabel>Email subscriptions</SectionLabel>
               <div style={{ font: '400 11px/1.5 var(--font-body)', color: 'var(--t-45)', marginTop: 4 }}>
-                Choose which alerts email you — by event, zone, type and criticality.
+                Choose what emails you — by trigger, and for network alerts by zone, type and criticality.
               </div>
             </div>
+            {user.email_opt_out && (
+              <div
+                style={{
+                  borderRadius: 12,
+                  border: '1px solid var(--yellow-border-strong)',
+                  background: 'var(--yellow-tint)',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ font: '600 12.5px var(--font-body)', color: 'var(--agl-yellow)' }}>
+                    All email is paused
+                  </div>
+                  <div style={{ font: '400 11px/1.5 var(--font-body)', color: 'var(--t-60)' }}>
+                    You stopped every SWAN notification from an email link. The subscriptions below
+                    stay as they are and resume the moment you turn this back on.
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={() => void api.setEmailOptOut(false).then(refresh)}
+                >
+                  Resume email
+                </Button>
+              </div>
+            )}
             <SubscriptionEditor
               subscriptions={user.subscriptions}
               countries={countries}

@@ -54,9 +54,54 @@ def create_session_token(user_id: str) -> str:
 
 
 def read_session_token(token: str) -> str | None:
-    """Return the user id, or None if the token is missing/invalid/expired."""
+    """Return the user id, or None if the token is missing/invalid/expired.
+
+    Tokens carrying a `purpose` claim are rejected outright. Both token types are
+    signed with the same secret, and an unsubscribe token is long-lived and sits
+    in the clear inside every email — without this check, lifting one out of a
+    forwarded message and pasting it into the session cookie would be a full
+    account takeover. Purpose-scoping is what keeps the two apart.
+    """
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        if payload.get("purpose"):
+            return None
         return payload.get("sub")
     except JWTError:
         return None
+
+
+# --------------------------------------------------------------------------- #
+# Unsubscribe tokens
+#
+# One-click unsubscribe has to work from a phone with no session, months after
+# the email was sent, so these are deliberately **not** expiring and carry no
+# rights beyond "silence notifications for this user". They are purpose-scoped
+# (see read_session_token) so they can never be replayed as a session.
+#
+# `sid` names the subscription that actually matched, so the landing page can
+# say which rule caused the email and switch off only that one.
+# --------------------------------------------------------------------------- #
+UNSUBSCRIBE_PURPOSE = "unsubscribe"
+
+
+def create_unsubscribe_token(user_id: str, subscription_id: str | None = None) -> str:
+    payload = {"sub": user_id, "purpose": UNSUBSCRIBE_PURPOSE, "iss": "swan"}
+    if subscription_id:
+        payload["sid"] = subscription_id
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def read_unsubscribe_token(token: str) -> tuple[str, str | None] | None:
+    """(user_id, subscription_id|None), or None if the token isn't a valid
+    unsubscribe token."""
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("purpose") != UNSUBSCRIBE_PURPOSE:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    return user_id, payload.get("sid")

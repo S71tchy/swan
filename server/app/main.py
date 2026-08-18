@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import admin, alerts, approvals, auth, meta, users
+from app.routers import admin, alerts, approvals, auth, meta, notifications, users
 
 
 @asynccontextmanager
@@ -44,7 +44,8 @@ app.add_middleware(
 # The whole API lives under /api so it can coexist with the built frontend on a
 # single origin in production (see the SPA handler below). In dev, Vite proxies
 # /api → this app, so the frontend uses the same paths in both modes.
-for r in (auth.router, alerts.router, approvals.router, users.router, meta.router, admin.router):
+for r in (auth.router, alerts.router, approvals.router, users.router, meta.router,
+          notifications.router, admin.router):
     app.include_router(r, prefix="/api")
 
 

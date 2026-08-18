@@ -92,7 +92,11 @@ export interface PerimeterRow {
   external: boolean
 }
 
-export type NotificationEvent = 'published' | 'closed' | 'submitted'
+/** A trigger name from the server template catalog (see NotificationTrigger).
+ *  Deliberately a plain string rather than a union: the catalog is server-owned
+ *  and grew to nine triggers, and pinning three of them here is exactly what
+ *  kept the editor unable to offer the rest. */
+export type NotificationEvent = string
 
 export interface Subscription {
   id: string
@@ -128,6 +132,8 @@ export interface UserPublic {
   timezone: string
   avatar_gold: boolean
   status: string
+  /** Global email switch. True = every notification is paused for this account. */
+  email_opt_out: boolean
 }
 
 export interface RegisterInput {
@@ -332,6 +338,31 @@ export interface IndustryRow {
   position: number
   usage: number
 }
+
+// --- Notification triggers + unsubscribe ---
+/** One subscribable trigger, from the server template catalog. */
+export interface NotificationTrigger {
+  event: string
+  label: string
+  description: string
+  /** zone = fan-out by perimeter, participant = addressed to you, managers = Rights Managers. */
+  audience: 'zone' | 'participant' | 'managers'
+  /** Which subscription filters mean anything here. Empty = none do. */
+  filters: ('zone' | 'category' | 'severity')[]
+}
+
+export interface UnsubscribeState {
+  recipient_name: string
+  email: string
+  opted_out: boolean
+  subscription_id: string | null
+  subscription_name: string | null
+  subscription_active: boolean | null
+  subscription_summary: string | null
+  active_subscriptions: number
+}
+
+export type UnsubscribeScope = 'subscription' | 'all' | 'resume'
 
 /** Public answer to "must I use a work address?" — no domain list, by design. */
 export interface RegistrationPolicy {

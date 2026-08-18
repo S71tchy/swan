@@ -101,6 +101,13 @@ class UserPublic(BaseModel):
     timezone: str
     avatar_gold: bool
     status: str = "active"
+    # Global email opt-out, so the profile can show "all emails paused" and
+    # offer the way back without a round-trip to the unsubscribe token.
+    email_opt_out: bool = False
+
+
+class NotificationPrefs(BaseModel):
+    email_opt_out: bool
 
 
 class RegisterRequest(BaseModel):
@@ -478,6 +485,40 @@ class IndustryUpdate(BaseModel):
 # --------------------------------------------------------------------------- #
 # Email domain policy (blocked domains for registration / user creation)
 # --------------------------------------------------------------------------- #
+class NotificationTrigger(BaseModel):
+    """One subscribable trigger, straight from the template catalog. The editor
+    builds its event pills from this, so a new template becomes selectable
+    without a frontend change."""
+
+    event: str
+    label: str
+    description: str
+    audience: str        # zone | participant | managers
+    filters: list[str]   # which subscription filters apply (may be empty)
+
+
+class UnsubscribeToken(BaseModel):
+    token: str
+
+
+class UnsubscribeRequest(BaseModel):
+    token: str
+    # subscription = pause the rule that sent it; all = stop every alert email;
+    # resume = undo both, so a mis-click is recoverable without signing in.
+    scope: str = "subscription"
+
+
+class UnsubscribeState(BaseModel):
+    recipient_name: str
+    email: str
+    opted_out: bool
+    subscription_id: str | None = None
+    subscription_name: str | None = None
+    subscription_active: bool | None = None
+    subscription_summary: str | None = None
+    active_subscriptions: int = 0
+
+
 class RegistrationPolicy(BaseModel):
     """Public, deliberately minimal: is a corporate address required? The login
     screen needs to say so; nobody unauthenticated needs the domain list."""

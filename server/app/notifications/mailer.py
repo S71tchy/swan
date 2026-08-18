@@ -19,6 +19,7 @@ def send_email(
     html: str,
     text: str | None = None,
     images: dict[str, bytes] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> None:
     """Send a multipart/alternative email (plain-text + HTML). `text` falls back
     to the HTML if not supplied (rare). `images` maps a Content-ID (e.g.
@@ -50,6 +51,11 @@ def send_email(
         msg["Subject"] = subject
         msg["From"] = settings.smtp_from
         msg["To"] = ", ".join(recipients)
+        # List-Unsubscribe / List-Unsubscribe-Post: the native Unsubscribe
+        # control in Gmail and Outlook. Set before the body so a malformed
+        # header can never end up inside the payload.
+        for name, value in (headers or {}).items():
+            msg[name] = value
         msg.set_content(text)                      # plain-text part
         msg.add_alternative(html, subtype="html")  # HTML part
         # Attach inline images to the HTML part (multipart/related), so cid:

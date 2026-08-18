@@ -126,6 +126,22 @@ def list_my_subscriptions(db: Session = Depends(get_db), user: User = Depends(ge
     return [schemas.SubscriptionOut.model_validate(s) for s in rows]
 
 
+@router.patch("/me/notifications", response_model=schemas.UserPublic)
+def update_my_notification_prefs(
+    body: schemas.NotificationPrefs,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The global email switch, and the way back from it.
+
+    Someone who used "stop all" from an email link has to be able to undo that
+    without finding another email, so the profile owns the same flag."""
+    user.email_opt_out = bool(body.email_opt_out)
+    db.commit()
+    db.refresh(user)
+    return schemas.UserPublic.model_validate(user)
+
+
 @router.post("/me/subscriptions", response_model=schemas.SubscriptionOut, status_code=status.HTTP_201_CREATED)
 def create_my_subscription(
     body: schemas.SubscriptionCreate,

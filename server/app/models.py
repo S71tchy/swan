@@ -144,6 +144,12 @@ class User(Base):
     # zero rights AND status="pending", which is the signal the admin filters on.
     status: Mapped[str] = mapped_column(String, default="active", index=True)
 
+    # Global "stop emailing me" switch, set from the unsubscribe landing page.
+    # Deliberately separate from pausing individual subscriptions: it is the one
+    # thing someone wants at 2am from their phone, and it must survive them
+    # later adding a new subscription. Checked once, in notifications.service.
+    email_opt_out: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # --- Rights model (spec §4.1), four dimensions + manager flag ---
     can_create: Mapped[bool] = mapped_column(Boolean, default=True)
     is_rights_manager: Mapped[bool] = mapped_column(Boolean, default=False)

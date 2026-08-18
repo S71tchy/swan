@@ -10,6 +10,7 @@ from app.deps import get_current_user
 from app.enums import CATEGORIES, INDUSTRIES, ROLES, Flow, Severity, TransportMode
 from app.models import Alert, Category, Industry, Place, User
 from app.reference import COUNTRY_CATALOGUE, STANDARD_PROFILES, country_meta
+from app.notifications.templates import CATALOG
 from app.rights import pending_alerts_in_perimeter
 
 router = APIRouter(tags=["meta"])
@@ -42,6 +43,20 @@ def taxonomy(db: Session = Depends(get_db)):
         "profiles": list(STANDARD_PROFILES.keys()),
         "roles": ROLES,
     }
+
+
+@router.get("/meta/notification-triggers", response_model=list[schemas.NotificationTrigger])
+def notification_triggers(_: User = Depends(get_current_user)):
+    """Everything a subscription can be built from, derived from the template
+    catalog. The editor used to hard-code three events, which is why the other
+    six triggers had no way to be turned on or off."""
+    return [
+        schemas.NotificationTrigger(
+            event=t["event"], label=t["label"], description=t["description"],
+            audience=t["audience"], filters=list(t["filters"]),
+        )
+        for t in CATALOG
+    ]
 
 
 @router.get("/meta/registration-policy", response_model=schemas.RegistrationPolicy)

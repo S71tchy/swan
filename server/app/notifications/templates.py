@@ -19,59 +19,83 @@ _ALERT_TOKENS = [
     "author", "alert_url", "approvals_url", "app_url",
 ]
 
-# Ordered catalog. `kind`: "broadcast" (subscription-driven) or "transactional"
-# (always sent to a specific person). `tokens` drives the admin editor's palette.
+# Ordered catalog. Every entry is a *trigger*, and this list is the single
+# source of truth for what a user can subscribe to — `enums.NOTIFICATION_EVENTS`
+# is derived from it, so adding a template here makes it subscribable without
+# touching the subscription code or the editor UI. (It used to be a hard-coded
+# list of three, repeated again in SubscriptionEditor.tsx; six of the nine
+# triggers were unreachable as a result.)
+#
+#   event     stable name stored in NotificationSubscription.events
+#   audience  who the mail is addressed to, which decides how recipients are
+#             resolved: "zone" fans out to subscribers whose zone matches the
+#             alert, "participant" goes to the one person the workflow names
+#             (the author, the registrant), "managers" to Rights Managers.
+#   filters   which subscription filters mean anything for this trigger. Empty
+#             for the participant/manager triggers: "your alert was rejected" is
+#             about your own item, so filtering it by zone would only ever drop
+#             mail the recipient is expecting. The editor hides what isn't listed.
+#   kind      the admin editor's existing label, unchanged.
 CATALOG: list[dict] = [
     {
-        "key": "alert_published", "kind": "broadcast",
+        "key": "alert_published", "event": "published", "audience": "zone",
+        "filters": ['zone', 'category', 'severity'], "kind": "broadcast",
         "label": "Alert published",
         "description": "Sent to subscribers when an alert is published in their zone.",
         "tokens": _ALERT_TOKENS,
     },
     {
-        "key": "alert_closed", "kind": "broadcast",
+        "key": "alert_closed", "event": "closed", "audience": "zone",
+        "filters": ['zone', 'category', 'severity'], "kind": "broadcast",
         "label": "Alert closed",
         "description": "Sent to subscribers when a published alert is closed.",
         "tokens": _ALERT_TOKENS,
     },
     {
-        "key": "alert_submitted", "kind": "broadcast",
+        "key": "alert_submitted", "event": "submitted", "audience": "zone",
+        "filters": ['zone', 'category', 'severity'], "kind": "broadcast",
         "label": "Alert submitted for approval",
         "description": "Sent to publishers subscribed to a zone when an alert is submitted.",
         "tokens": _ALERT_TOKENS,
     },
     {
-        "key": "submission_received", "kind": "transactional",
+        "key": "submission_received", "event": "submission_received", "audience": "participant",
+        "filters": [], "kind": "transactional",
         "label": "Submission received (to author)",
         "description": "Confirms to the author that their alert entered the approval queue.",
         "tokens": _ALERT_TOKENS,
     },
     {
-        "key": "alert_approved", "kind": "transactional",
+        "key": "alert_approved", "event": "approved", "audience": "participant",
+        "filters": [], "kind": "transactional",
         "label": "Alert approved & published (to author)",
         "description": "Tells the author their submitted alert was approved and published.",
         "tokens": _ALERT_TOKENS,
     },
     {
-        "key": "alert_rejected", "kind": "transactional",
+        "key": "alert_rejected", "event": "rejected", "audience": "participant",
+        "filters": [], "kind": "transactional",
         "label": "Alert rejected (to author)",
         "description": "Tells the author their alert was rejected, with the reviewer's comment.",
         "tokens": _ALERT_TOKENS + ["comment"],
     },
     {
-        "key": "user_registered", "kind": "transactional",
+        "key": "user_registered", "event": "user_registered", "audience": "managers",
+        "filters": [], "kind": "transactional",
         "label": "New registration (to Rights Managers)",
         "description": "Notifies every Rights Manager that a new account is awaiting validation.",
         "tokens": ["recipient_name", "new_user_name", "new_user_email", "admin_url", "app_url"],
     },
     {
-        "key": "registration_ack", "kind": "transactional",
+        "key": "registration_ack", "event": "registration_ack", "audience": "participant",
+        "filters": [], "kind": "transactional",
         "label": "Registration acknowledgement (to registrant)",
         "description": "Confirms to a new registrant that their request was received.",
         "tokens": ["recipient_name", "app_url"],
     },
     {
-        "key": "account_activated", "kind": "transactional",
+        "key": "account_activated", "event": "account_activated", "audience": "participant",
+        "filters": [], "kind": "transactional",
         "label": "Account activated (to registrant)",
         "description": "Tells a registrant their account was validated and they can sign in.",
         "tokens": ["recipient_name", "role", "login_url", "app_url"],
@@ -79,6 +103,23 @@ CATALOG: list[dict] = [
 ]
 
 CATALOG_BY_KEY = {t["key"]: t for t in CATALOG}
+CATALOG_BY_EVENT = {t["event"]: t for t in CATALOG}
+
+# Subscription event names, in catalog order.
+EVENTS = [t["event"] for t in CATALOG]
+# Triggers a *new* user is subscribed to by default. Everything addressed to
+# them personally: once delivery is subscription-driven, an empty subscription
+# list would mean nobody is ever told their own alert was rejected. Managers
+# additionally get "user_registered" (see subscriptions.default_events).
+DEFAULT_PARTICIPANT_EVENTS = [t["event"] for t in CATALOG if t["audience"] == "participant"]
+MANAGER_EVENTS = [t["event"] for t in CATALOG if t["audience"] == "managers"]
+ZONE_EVENTS = [t["event"] for t in CATALOG if t["audience"] == "zone"]
+
+
+def event_filters(event: str) -> list[str]:
+    """Which subscription filters apply to this trigger ([] = none do)."""
+    entry = CATALOG_BY_EVENT.get(event)
+    return list(entry["filters"]) if entry else []
 
 
 def _alert_html(lang: str, intro: str, cta_label: str, cta_token: str = "alert_url") -> str:

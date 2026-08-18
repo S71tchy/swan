@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.enums import NOTIFICATION_EVENTS, SEVERITY_ORDER
 from app.models import NotificationSubscription
+from app.notifications.templates import DEFAULT_PARTICIPANT_EVENTS, MANAGER_EVENTS
 from app.reference import COUNTRY_CATALOGUE
 
 
@@ -27,3 +28,66 @@ def apply_subscription(sub: NotificationSubscription, data: dict) -> Notificatio
     if data.get("min_severity") is not None:
         sub.min_severity = data["min_severity"] if data["min_severity"] in SEVERITY_ORDER else "info"
     return sub
+
+
+# --------------------------------------------------------------------------- #
+# Default subscriptions
+#
+# Delivery is subscription-driven for *every* trigger, including the ones
+# addressed to a specific person ("your alert was rejected"). That makes an
+# account with no subscriptions completely silent — so a new account gets these,
+# and every existing account was backfilled with them by the migration. They are
+# ordinary subscriptions: visible in the profile, pausable, deletable.
+#
+# Two of them, not one, on purpose: pausing "New registrations" from the
+# unsubscribe link in a registration email must not also switch off the reply to
+# your own submission.
+# --------------------------------------------------------------------------- #
+PERSONAL_SUBSCRIPTION_NAME = "My activity"
+REGISTRATIONS_SUBSCRIPTION_NAME = "New registrations"
+
+
+def default_subscriptions(user_id: str, is_manager: bool) -> list[NotificationSubscription]:
+    subs = [
+        NotificationSubscription(
+            user_id=user_id,
+            name=PERSONAL_SUBSCRIPTION_NAME,
+            active=True,
+            events=list(DEFAULT_PARTICIPANT_EVENTS),
+            countries=[], profiles=[], categories=[], min_severity="info",
+        )
+    ]
+    if is_manager:
+        subs.append(
+            NotificationSubscription(
+                user_id=user_id,
+                name=REGISTRATIONS_SUBSCRIPTION_NAME,
+                active=True,
+                events=list(MANAGER_EVENTS),
+                countries=[], profiles=[], categories=[], min_severity="info",
+            )
+        )
+    return subs
+
+
+def ensure_manager_subscription(db, user) -> None:
+    """Give a newly-promoted Rights Manager the registrations subscription.
+
+    Without this, promotion is silent: before this change every manager was
+    mailed about registrations unconditionally, so a manager who acquired the
+    role later would simply never hear about one.
+    """
+    existing = db.query(NotificationSubscription).filter(
+        NotificationSubscription.user_id == user.id
+    ).all()
+    if any(set(MANAGER_EVENTS) & set(sub.events or []) for sub in existing):
+        return
+    db.add(
+        NotificationSubscription(
+            user_id=user.id,
+            name=REGISTRATIONS_SUBSCRIPTION_NAME,
+            active=True,
+            events=list(MANAGER_EVENTS),
+            countries=[], profiles=[], categories=[], min_severity="info",
+        )
+    )

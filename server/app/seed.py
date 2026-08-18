@@ -23,6 +23,8 @@ from app.models import (
     User,
 )
 from app.reference import PLACES, STANDARD_PROFILES, country_meta
+from app.rights import is_rights_manager
+from app.subscriptions import default_subscriptions
 from app.security import hash_password
 
 NOW = datetime.now(timezone.utc)
@@ -291,6 +293,12 @@ def seed_subscriptions(db, u: dict[str, User]) -> None:
     ]
     for s in subs:
         db.add(s)
+    # Plus the defaults every account gets: delivery is subscription-driven for
+    # the personal triggers too, so without these a seeded user never receives
+    # the reply to their own submission.
+    for user in u.values():
+        for s in default_subscriptions(user.id, is_manager=is_rights_manager(db, user)):
+            db.add(s)
     db.commit()
 
 

@@ -16,6 +16,7 @@ import type {
   DashboardStats,
   ExternalVariant,
   LiveVersion,
+  NotificationTrigger,
   OpenApiDoc,
   Place,
   PlaceInput,
@@ -28,6 +29,8 @@ import type {
   Subscription,
   SubscriptionInput,
   Taxonomy,
+  UnsubscribeScope,
+  UnsubscribeState,
   TemplateEntry,
   TemplatePreview,
   UserMe,
@@ -82,6 +85,10 @@ export const api = {
 
   // me
   me: () => req<UserMe>('/users/me'),
+  /** The global "stop all email" switch, and the way back from it. */
+  setEmailOptOut: (email_opt_out: boolean) =>
+    req<UserPublic>('/users/me/notifications', { method: 'PATCH', body: JSON.stringify({ email_opt_out }) }),
+
   // notification subscriptions (self-service)
   createSubscription: (body: SubscriptionInput) =>
     req<Subscription>('/users/me/subscriptions', { method: 'POST', body: JSON.stringify(body) }),
@@ -95,6 +102,9 @@ export const api = {
   taxonomy: () => req<Taxonomy>('/meta/taxonomy'),
   places: (q = '') => req<Place[]>(`/meta/places?q=${encodeURIComponent(q)}`),
   countries: () => req<CountryRef[]>('/meta/countries'),
+  /** Everything a subscription can be built from (the email template catalog). */
+  notificationTriggers: () => req<NotificationTrigger[]>('/meta/notification-triggers'),
+
   /** Is a corporate address required to register? Login screen hint only. */
   registrationPolicy: () => req<RegistrationPolicy>('/meta/registration-policy'),
 
@@ -122,6 +132,19 @@ export const api = {
 
   // approvals
   approvals: () => req<ApprovalQueue>('/approvals'),
+
+  // unsubscribe — no session: the signed token in the email link is the auth.
+  // Both are POSTs so that a mail scanner fetching the page URL cannot act.
+  unsubscribePreview: (token: string) =>
+    req<UnsubscribeState>('/notifications/unsubscribe/preview', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+  unsubscribe: (token: string, scope: UnsubscribeScope) =>
+    req<UnsubscribeState>('/notifications/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ token, scope }),
+    }),
 
   // admin — rights & user administration (Rights Manager only)
   adminCountries: () => req<CountryRef[]>('/admin/countries'),

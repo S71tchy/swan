@@ -2,6 +2,11 @@
 between models, schemas, seed data, and the frontend (mirrored in web/src/types)."""
 from enum import Enum
 
+# The notification triggers live with the templates that define them; this module
+# only re-exports them so existing importers keep working. templates.py imports
+# nothing from the app, so there is no cycle.
+from app.notifications.templates import EVENTS as _TEMPLATE_EVENTS
+
 
 class Severity(str, Enum):
     info = "info"
@@ -81,7 +86,11 @@ ROLES = [
 # Direct transactional emails (submission-received, approval decision,
 # registration, activation) are NOT subscription-filtered — they always go to a
 # specific person — so they are not in this list.
-NOTIFICATION_EVENTS = ["published", "closed", "submitted"]
+# Derived from the notification template catalog — that list is the source of
+# truth for what exists to be notified about, so a new template is subscribable
+# the moment it is added. Hard-coding it here (and again in the editor) is what
+# left six of the nine triggers with no way to opt in or out.
+NOTIFICATION_EVENTS = list(_TEMPLATE_EVENTS)
 
 # Severity ordering for the "min criticality" subscription threshold.
 SEVERITY_ORDER = ["info", "watch", "warning", "critical"]

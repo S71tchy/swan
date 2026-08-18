@@ -17,6 +17,7 @@ from app.models import User
 from app.notifications import service as notify
 from app.schemas import DevLoginRequest, PasswordLoginRequest, RegisterRequest, UserPublic
 from app.security import COOKIE_NAME, create_session_token, hash_password, verify_password
+from app.subscriptions import default_subscriptions
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -127,9 +128,15 @@ def register(
         profiles=[],
     )
     db.add(user)
+    db.flush()
+    # Default subscriptions, created with the account and before any mail goes
+    # out: delivery is subscription-driven now, so an account with none is
+    # silent -- including for the acknowledgement sent a few lines below.
+    for sub in default_subscriptions(user.id, is_manager=False):
+        db.add(sub)
     db.commit()
     db.refresh(user)
-    # Notify all Rights Managers there's an account to validate; ack the registrant.
+    # Notify Rights Managers who subscribe to registrations; ack the registrant.
     notify.notify_user_registered(db, background, user)
     _set_session_cookie(response, user)
     return UserPublic.model_validate(user)

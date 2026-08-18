@@ -62,7 +62,7 @@ _SHELL = """<!doctype html>
       </td></tr>
       <tr><td class="swan-body" style="padding:28px;">__BODY__</td></tr>
       <tr><td style="background:#f4f6f9;padding:16px 28px;color:#6b7688;font-family:'Segoe UI',Arial,sans-serif;font-size:11px;line-height:1.5;border-top:1px solid #e7ebf1;">
-        Internal AGL notification · access is governed by location-based publication rights · all actions are audited.
+        __UNSUB__Internal AGL notification · access is governed by location-based publication rights · all actions are audited.
       </td></tr>
     </table>
   </td></tr>
@@ -87,9 +87,95 @@ def render_html(html_template: str, context: dict) -> str:
     return _TOKEN_RE.sub(sub, html_template or "")
 
 
-def wrap_html(inner_html: str) -> str:
-    """Wrap rendered body content in the branded shell."""
-    return _SHELL.replace("__BODY__", inner_html or "")
+# --------------------------------------------------------------------------- #
+# Unsubscribe
+#
+# The footer is built here, in the shell, rather than in the template bodies:
+# an operator editing copy under /admin/templates can't delete it by accident,
+# a template added later gets it for free, and it never appears in the token
+# palette. It renders only when a URL is supplied, so the admin preview and
+# test-send stay honest about what a real recipient sees.
+#
+# The link points at the SPA (a page, needing no session) rather than straight
+# at an API route, because acting on GET is how corporate link-scanners and
+# Outlook's preview fetcher silently unsubscribe people. The page asks; only
+# its POST changes anything. The one exception is the RFC 8058 header below,
+# which mail clients POST to directly for their native Unsubscribe button.
+# --------------------------------------------------------------------------- #
+# Whole sentences per locale, not glued-together fragments: the subscription
+# name sits *before* the noun in English and *after* it in French, so composing
+# the line from shared pieces produced "votre « My activity » abonnement".
+_UNSUB_COPY = {
+    "en": {
+        "named": "You are receiving this because of your {name} subscription.",
+        "generic": "You are receiving this because of your SWAN subscription.",
+        "unsubscribe": "Unsubscribe",
+        "manage": "Manage preferences",
+    },
+    "fr": {
+        "named": "Vous recevez ce message en raison de votre abonnement {name}.",
+        "generic": "Vous recevez ce message en raison de votre abonnement SWAN.",
+        "unsubscribe": "Se désabonner",
+        "manage": "Gérer les préférences",
+    },
+}
+
+
+def unsubscribe_page_url(token: str) -> str:
+    """Landing page for a one-click unsubscribe token."""
+    return f"{settings.app_base_url.rstrip('/')}/unsubscribe?token={token}"
+
+
+def _one_click_url(token: str) -> str:
+    """The POST endpoint mail clients hit for their own Unsubscribe button.
+    Same origin as the app in production; in dev the Vite proxy covers /api."""
+    return f"{settings.app_base_url.rstrip('/')}/api/notifications/unsubscribe/one-click?token={token}"
+
+
+def unsubscribe_headers(token: str) -> dict[str, str]:
+    """RFC 2369 + RFC 8058 headers, which is what makes Gmail and Outlook show
+    their own Unsubscribe control next to the sender — the control people reach
+    for before they reach for a filter rule."""
+    return {
+        "List-Unsubscribe": f"<{_one_click_url(token)}>, <{unsubscribe_page_url(token)}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def _unsub_footer(url: str, reason: str | None, locale: str) -> str:
+    copy = _UNSUB_COPY.get(locale, _UNSUB_COPY["en"])
+    prefs = f"{settings.app_base_url.rstrip('/')}/profile?section=notifications"
+    line = (
+        copy["named"].format(
+            name=f"<strong>&ldquo;{_html.escape(reason)}&rdquo;</strong>"
+        )
+        if reason
+        else copy["generic"]
+    )
+    return (
+        f'<span style="color:#6b7688;">{line}</span> '
+        f'<a href="{url}" style="color:#1b365f;">{copy["unsubscribe"]}</a> · '
+        f'<a href="{prefs}" style="color:#1b365f;">{copy["manage"]}</a><br>'
+    )
+
+
+def unsubscribe_text(url: str, reason: str | None, locale: str) -> str:
+    """Plain-text equivalent of the footer, with the URL written out."""
+    copy = _UNSUB_COPY.get(locale, _UNSUB_COPY["en"])
+    line = copy["named"].format(name=f'"{reason}"') if reason else copy["generic"]
+    return f"-- \n{line}\n{copy['unsubscribe']}: {url}"
+
+
+def wrap_html(
+    inner_html: str,
+    unsubscribe_url: str | None = None,
+    reason: str | None = None,
+    locale: str = "en",
+) -> str:
+    """Wrap rendered body content in the branded shell, with the unsubscribe
+    footer when this message is one somebody can opt out of."""
+    footer = _unsub_footer(unsubscribe_url, reason, locale) if unsubscribe_url else ""
+    return _SHELL.replace("__BODY__", inner_html or "").replace("__UNSUB__", footer)
 
 
 # --------------------------------------------------------------------------- #

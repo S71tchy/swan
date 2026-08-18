@@ -11,6 +11,7 @@ import AdminUsers from './screens/AdminUsers'
 import AdminProfiles from './screens/AdminProfiles'
 import MasterData from './screens/MasterData'
 import EmailDomains from './screens/EmailDomains'
+import Unsubscribe from './screens/Unsubscribe'
 import NotificationTemplates from './screens/NotificationTemplates'
 import ReferenceData from './screens/ReferenceData'
 import ApiDocs from './screens/ApiDocs'
@@ -51,6 +52,9 @@ export default function App() {
         path="/login"
         element={loading ? <FullBleedLoader /> : user ? <Navigate to="/" replace /> : <Login />}
       />
+      {/* Public on purpose: reached from an email link, by someone who is very
+          likely not signed in. The signed token in the URL is the whole auth. */}
+      <Route path="/unsubscribe" element={<Unsubscribe />} />
       <Route
         path="/"
         element={
