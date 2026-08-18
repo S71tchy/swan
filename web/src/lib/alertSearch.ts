@@ -49,10 +49,14 @@ const SEVERITY_TERMS: Record<Severity, string[]> = {
 }
 
 const NATIONWIDE_TERMS = ['nationwide', 'countrywide', 'national', 'whole']
+// Drawn areas: straits, anchorages, corridors. Same reasoning as the nationwide
+// vocabulary -- nobody guesses that "zone" is a thing you can type at a map, so
+// it is surfaced as a hint below.
+const ZONE_TERMS = ['zone', 'area', 'strait', 'corridor', 'passage']
 
 /** What the user can type beyond names — surfaced in the search dropdown,
  *  because a vocabulary nobody can see is a vocabulary nobody uses. */
-export const SEARCH_HINTS = ['rail', 'sea', 'road', 'air', 'critical', 'import', 'nationwide']
+export const SEARCH_HINTS = ['rail', 'sea', 'road', 'air', 'critical', 'import', 'nationwide', 'zone']
 
 /** Split to lowercase words on anything non-alphanumeric, so "Port-Gentil",
  *  "Côte d'Ivoire" and "MZBEW/2" all yield sensible searchable words. */
@@ -98,6 +102,7 @@ function facetsFor(a: Alert): Facets {
     }
     FLOW_TERMS[l.flow]?.forEach((t) => terms.add(t))
     if (l.scope === 'country') NATIONWIDE_TERMS.forEach((t) => terms.add(t))
+    if (l.scope === 'zone') ZONE_TERMS.forEach((t) => terms.add(t))
   }
   return { words: words(alertText(a)), terms: [...terms] }
 }

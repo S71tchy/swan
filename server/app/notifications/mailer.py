@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import sys
 from email.message import EmailMessage
 from email.utils import parseaddr
 
@@ -35,12 +36,20 @@ def send_email(
 
     if not settings.smtp_host:
         # Dev fallback: no SMTP configured — surface the email in the console.
-        print(
+        #
+        # Transcoded to whatever the console can actually take before printing.
+        # A Windows terminal is cp1252, and SWAN's own copy is full of en-dashes
+        # and arrows: printing those raised UnicodeEncodeError *inside the
+        # background task*, after the HTTP response had already gone out, so
+        # publishing an alert appeared to succeed while the notification died
+        # with a stack trace nobody was looking at.
+        block = (
             f"\n===== EMAIL (no SMTP configured) =====\n"
             f"To: {', '.join(recipients)}\nSubject: {subject}\n\n{text}\n"
-            f"===== end email =====\n",
-            flush=True,
+            f"===== end email =====\n"
         )
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        print(block.encode(enc, errors="replace").decode(enc, errors="replace"), flush=True)
         log.info("email (console) to=%s subject=%r", recipients, subject)
         return
 

@@ -10,7 +10,7 @@ import { AlertTicker } from '../components/AlertTicker'
 import { matchAlerts } from '../lib/alertSearch'
 import { AlertDetailPanel } from '../components/AlertDetailPanel'
 import { swanMapStyle } from '../lib/mapStyle'
-import { addDetailOverlay, setNationwideHighlights } from '../lib/mapOverlay'
+import { addDetailOverlay, setNationwideHighlights, setZoneShapes, type ZoneShape } from '../lib/mapOverlay'
 import { MARKER_SPEC, SEVERITY_COLOR, SEVERITY_HEX, maxSeverity } from '../lib/format'
 import type { Alert, DashboardStats, Severity } from '../types'
 
@@ -212,6 +212,32 @@ export default function Dashboard() {
     )
   }, [alerts, matchedIds])
 
+  // Custom zone shapes, reduced the same way as the country washes: one fill per
+  // zone at the worst severity on it, so two alerts on Hormuz paint one area.
+  // The geometry comes off the alert itself, not from master data, so an alert
+  // keeps drawing as it was filed even after the zone is edited.
+  const zoneShapes = useMemo<ZoneShape[]>(() => {
+    const worst: Record<string, { sev: Severity; name: string; geometry: ZoneShape['geometry'] }> = {}
+    for (const a of alerts) {
+      if (matchedIds !== null && !matchedIds.has(a.id)) continue
+      for (const l of a.locations) {
+        if (l.scope !== 'zone' || !l.code || !l.geometry) continue
+        const cur = worst[l.code]
+        worst[l.code] = {
+          sev: cur ? maxSeverity(cur.sev, a.severity) : a.severity,
+          name: l.name,
+          geometry: l.geometry,
+        }
+      }
+    }
+    return Object.entries(worst).map(([code, z]) => ({
+      code,
+      name: z.name,
+      colour: SEVERITY_HEX[z.sev],
+      geometry: z.geometry,
+    }))
+  }, [alerts, matchedIds])
+
   const flyTo = useCallback((lng: number, lat: number, zoom = 5) => {
     mapRef.current?.flyTo({ center: [lng, lat], zoom, speed: 1.1 })
   }, [])
@@ -314,6 +340,13 @@ export default function Dashboard() {
     if (!map || !styleReady) return
     setNationwideHighlights(map, countryColours)
   }, [countryColours, styleReady])
+
+  // Sync the drawn zone shapes on the same terms as the country washes
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !styleReady) return
+    setZoneShapes(map, zoneShapes)
+  }, [zoneShapes, styleReady])
 
   // Sync markers whenever clusters or selection change
   useEffect(() => {

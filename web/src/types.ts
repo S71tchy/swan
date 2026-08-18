@@ -19,7 +19,7 @@ export type Flow = 'import' | 'export' | 'both'
  * Scope lives on the *block*, not the alert, so one alert can carry
  * "Nigeria nationwide, Road+Rail" alongside "Apapa, Sea" with their own modes.
  */
-export type LocationScope = 'point' | 'country'
+export type LocationScope = 'point' | 'country' | 'zone'
 
 export interface LocationBlock {
   name: string
@@ -33,6 +33,14 @@ export interface LocationBlock {
   flow: Flow
   /** Absent on alerts created before nationwide scope existed — treat as 'point'. */
   scope?: LocationScope
+  /** Zone blocks only. A zone spans several countries (Hormuz is IR + OM) or
+   *  none (open ocean), which the singular `country` cannot express — and every
+   *  rights decision reads these. Empty means no perimeter covers the alert, so
+   *  it escalates to Rights Managers. */
+  countries?: string[]
+  /** Zone blocks only: a copy of the shape as filed, so the map draws the alert
+   *  the way it was written even if the master zone is later edited. */
+  geometry?: { type: 'Polygon'; coordinates: number[][][] } | null
 }
 
 export interface AlertAuthor {
@@ -337,6 +345,36 @@ export interface IndustryRow {
   name: string
   position: number
   usage: number
+}
+
+// --- Zones (custom polygon / radius master data) ---
+export interface ZoneRow {
+  code: string
+  name: string
+  kind: 'polygon' | 'radius'
+  /** Declared rights perimeter. Empty = international waters, escalates. */
+  countries: string[]
+  country_names: string[]
+  geometry: { type: 'Polygon'; coordinates: number[][][] }
+  lat: number
+  lng: number
+  radius_m: number | null
+  aliases: string[]
+  notes: string
+  usage: number
+}
+
+export interface ZoneInput {
+  code?: string
+  name: string
+  kind: 'polygon' | 'radius'
+  countries: string[]
+  geometry?: { type: 'Polygon'; coordinates: number[][][] }
+  lat?: number
+  lng?: number
+  radius_m?: number
+  aliases?: string[]
+  notes?: string
 }
 
 // --- Analytics ---

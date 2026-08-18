@@ -12,6 +12,7 @@ import AdminUsers from './screens/AdminUsers'
 import AdminProfiles from './screens/AdminProfiles'
 import MasterData from './screens/MasterData'
 import EmailDomains from './screens/EmailDomains'
+import AdminZones from './screens/AdminZones'
 import Unsubscribe from './screens/Unsubscribe'
 import NotificationTemplates from './screens/NotificationTemplates'
 import ReferenceData from './screens/ReferenceData'
@@ -147,6 +148,14 @@ export default function App() {
       />
       {/* previous name for the gazetteer — keep old links working */}
       <Route path="/admin/data" element={<Navigate to="/admin/locations" replace />} />
+      <Route
+        path="/admin/zones"
+        element={
+          <RequireAuth>
+            <AdminZones />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/admin/email-domains"
         element={

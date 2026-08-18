@@ -8,7 +8,7 @@ from app import email_policy, schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.enums import CATEGORIES, INDUSTRIES, ROLES, Flow, Severity, TransportMode
-from app.models import Alert, Category, Industry, Place, User
+from app.models import Alert, Category, Industry, Place, User, Zone
 from app.reference import COUNTRY_CATALOGUE, STANDARD_PROFILES, country_meta
 from app.notifications.templates import CATALOG
 from app.rights import pending_alerts_in_perimeter
@@ -56,6 +56,28 @@ def notification_triggers(_: User = Depends(get_current_user)):
             audience=t["audience"], filters=list(t["filters"]),
         )
         for t in CATALOG
+    ]
+
+
+@router.get("/meta/zones", response_model=list[schemas.ZoneRow])
+def zones(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """Zones offered on the create-alert form.
+
+    Readable by anyone who can file an alert; editing them is Rights-Manager
+    work under Settings. Geometry ships with the list because the form previews
+    the shape on its map, and zones are few and small -- unlike alert pictures,
+    which is why the feed is careful and this list is not.
+    """
+    rows = db.query(Zone).order_by(Zone.name).all()
+    return [
+        schemas.ZoneRow(
+            code=z.code, name=z.name, kind=z.kind,
+            countries=list(z.countries or []),
+            country_names=[country_meta(c)["name"] for c in (z.countries or [])],
+            geometry=z.geometry or {}, lat=z.lat, lng=z.lng, radius_m=z.radius_m,
+            aliases=list(z.aliases or []), notes=z.notes or "", usage=0,
+        )
+        for z in rows
     ]
 
 

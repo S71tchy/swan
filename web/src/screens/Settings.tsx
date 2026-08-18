@@ -13,6 +13,7 @@ import {
   CodeIcon,
   MailIcon,
   PinIcon,
+  ZoneIcon,
   ProfilesIcon,
   RightsIcon,
   ShieldIcon,
@@ -130,6 +131,7 @@ export default function Settings() {
     pending: number
     profiles: number
     places: number
+    zones: number
     domains: number
     domainsEnforced: number
     templates: number
@@ -148,12 +150,14 @@ export default function Settings() {
       api.adminPlaces().catch(() => []),
       api.adminTemplates().catch(() => []),
       api.adminEmailDomains().catch(() => []),
-    ]).then(([users, profiles, places, templates, domains]) =>
+      api.adminZones().catch(() => []),
+    ]).then(([users, profiles, places, templates, domains, zones]) =>
       setCounts({
         users: users.length,
         pending: users.filter((u) => u.status === 'pending').length,
         profiles: profiles.length,
         places: places.length,
+        zones: zones.length,
         domains: domains.length,
         domainsEnforced: domains.filter((d) => d.active).length,
         templates: templates.length,
@@ -228,6 +232,14 @@ export default function Settings() {
       path: '/admin/locations',
       icon: (s) => <PinIcon size={18} stroke={s} />,
       metric: n(counts?.places, 'location', 'locations'),
+    },
+    {
+      key: 'zones',
+      title: 'Zones',
+      description: 'Drawn areas — straits, anchorages, corridors — an alert can be filed against.',
+      path: '/admin/zones',
+      icon: (s) => <ZoneIcon size={18} stroke={s} />,
+      metric: counts ? n(counts.zones, 'zone', 'zones') : undefined,
     },
     {
       key: 'templates',

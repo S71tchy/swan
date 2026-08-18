@@ -11,25 +11,36 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # --------------------------------------------------------------------------- #
 class LocationBlock(BaseModel):
     name: str                       # "Lagos — Apapa (NGAPP)"
-    code: str = ""                  # UN/LOCODE etc. "NGAPP"
-    country: str                    # ISO2 "NG"
+    code: str = ""                  # UN/LOCODE, or a zone code
+    country: str                    # ISO2 "NG" — blank for a zone (see `countries`)
     country_name: str = ""
     flag: str = ""                  # emoji placeholder
     lat: float
     lng: float
     modes: list[str] = Field(default_factory=list)   # TransportMode values
     flow: str = "both"              # Flow value
-    # "point" = a specific place; "country" = the whole nation (elections,
-    # national strikes), which the dashboard paints as a filled polygon. Stored
-    # inside the `locations` JSON column, so this needed no migration. Defaults
-    # to "point" so alerts written before nationwide scope existed still load.
+    # "point"   = a specific place
+    # "country" = the whole nation (elections, national strikes), painted as a
+    #             filled country polygon on the dashboard
+    # "zone"    = a custom drawn area (a strait, an anchorage, a corridor)
+    # Stored inside the `locations` JSON column, so none of this needed a
+    # migration. Defaults to "point" so older alerts still load.
     scope: str = "point"
+    # Zone blocks only. A zone spans several countries (Hormuz is IR + OM) or
+    # none (open ocean), which the singular `country` above cannot express — and
+    # every rights decision reads these, so an empty list means no perimeter
+    # covers the alert and it escalates to Rights Managers by the existing rule.
+    countries: list[str] = Field(default_factory=list)
+    # Denormalised copy of the zone's shape, so the map can draw the alert
+    # exactly as it was filed even if the zone is later edited or deleted in
+    # master data — the same reasoning that keeps a place's name on the alert.
+    geometry: dict | None = None
 
     @field_validator("scope")
     @classmethod
     def _check_scope(cls, value: str) -> str:
-        if value not in ("point", "country"):
-            raise ValueError("scope must be 'point' or 'country'")
+        if value not in ("point", "country", "zone"):
+            raise ValueError("scope must be 'point', 'country' or 'zone'")
         return value
 
 
@@ -485,6 +496,51 @@ class IndustryUpdate(BaseModel):
 # --------------------------------------------------------------------------- #
 # Email domain policy (blocked domains for registration / user creation)
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Zones (custom polygon / radius master data)
+# --------------------------------------------------------------------------- #
+class ZoneRow(BaseModel):
+    code: str
+    name: str
+    kind: str                    # polygon | radius
+    countries: list[str]         # declared rights perimeter (may be empty)
+    country_names: list[str]
+    geometry: dict
+    lat: float
+    lng: float
+    radius_m: float | None = None
+    aliases: list[str]
+    notes: str = ""
+    usage: int = 0               # alerts referencing this zone
+
+
+class ZoneCreate(BaseModel):
+    code: str
+    name: str
+    kind: str = "polygon"
+    countries: list[str] = Field(default_factory=list)
+    # polygon: the drawn ring. radius: centre + radius_m, and the ring is
+    # derived server-side so the two can never disagree.
+    geometry: dict | None = None
+    lat: float | None = None
+    lng: float | None = None
+    radius_m: float | None = None
+    aliases: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+class ZoneUpdate(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    countries: list[str] | None = None
+    geometry: dict | None = None
+    lat: float | None = None
+    lng: float | None = None
+    radius_m: float | None = None
+    aliases: list[str] | None = None
+    notes: str | None = None
+
+
 # --------------------------------------------------------------------------- #
 # Analytics (Settings-free reporting section)
 # --------------------------------------------------------------------------- #

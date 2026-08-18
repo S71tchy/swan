@@ -58,6 +58,78 @@ function colourByCountry(colours: Record<string, string>): ExpressionSpecificati
  * wash never buries the map's own detail, and the fill is kept translucent so
  * point markers sitting on top of a highlighted country stay readable.
  */
+const ZONE_SOURCE = 'alert-zones'
+const ZONE_FILL = 'alert-zone-fill'
+const ZONE_LINE = 'alert-zone-line'
+
+/** One drawn area, already reduced to a single colour by the caller. */
+export interface ZoneShape {
+  code: string
+  name: string
+  colour: string
+  geometry: { type: 'Polygon'; coordinates: number[][][] }
+}
+
+/**
+ * Paint the custom zones carried by the current alert set.
+ *
+ * A GeoJSON source rather than the demotiles trick the nationwide washes use:
+ * we own this geometry, so there is nothing to key on and no ADM0_A3-vs-ISO
+ * mismatch to fall foul of. Each alert carries its own copy of the shape, which
+ * is what lets an alert keep drawing the way it was filed after someone edits
+ * the master zone.
+ *
+ * Overlapping zones reduce to one fill at the worst severity before they get
+ * here, mirroring `buildClusters` and the country washes: two translucent fills
+ * stacked read as a third colour that means nothing.
+ */
+export function setZoneShapes(map: maplibregl.Map, shapes: ZoneShape[]): void {
+  if (!map.getStyle()) return
+  const data: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: shapes.map((z) => ({
+      type: 'Feature',
+      properties: { code: z.code, name: z.name, colour: z.colour },
+      geometry: z.geometry,
+    })),
+  }
+
+  const existing = map.getSource(ZONE_SOURCE) as maplibregl.GeoJSONSource | undefined
+  if (existing) {
+    existing.setData(data)
+    return
+  }
+
+  map.addSource(ZONE_SOURCE, { type: 'geojson', data })
+  // Same insertion rule as the country washes: below the province lines and
+  // city labels so the fill never buries the map detail, falling back to the
+  // city dots because the province layers load lazily.
+  const before = ['ne-province-line', 'ne-city-point'].find((id) => map.getLayer(id))
+  map.addLayer(
+    {
+      id: ZONE_FILL,
+      type: 'fill',
+      source: ZONE_SOURCE,
+      paint: { 'fill-color': ['get', 'colour'], 'fill-opacity': 0.22 },
+    },
+    before,
+  )
+  map.addLayer(
+    {
+      id: ZONE_LINE,
+      type: 'line',
+      source: ZONE_SOURCE,
+      paint: {
+        'line-color': ['get', 'colour'],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1.2, 5, 2.2, 8, 3],
+        'line-opacity': 0.9,
+      },
+    },
+    before,
+  )
+}
+
+
 export function setNationwideHighlights(
   map: maplibregl.Map,
   colours: Record<string, string>,

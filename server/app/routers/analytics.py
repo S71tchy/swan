@@ -87,11 +87,17 @@ class Row:
 
     @property
     def countries(self) -> list[str]:
-        return [
-            (loc.get("country") or "").upper()
-            for loc in (self.locations or [])
-            if loc.get("country")
-        ]
+        # A zone block carries `countries` (Hormuz is IR + OM) instead of the
+        # singular `country`, so both are read. Without the plural, alerts filed
+        # on a zone would silently vanish from every country breakdown rather
+        # than showing up as uncountried.
+        out: list[str] = []
+        for loc in self.locations or []:
+            for raw in [loc.get("country"), *(loc.get("countries") or [])]:
+                code = (raw or "").upper()
+                if code:
+                    out.append(code)
+        return out
 
     @property
     def modes(self) -> list[str]:

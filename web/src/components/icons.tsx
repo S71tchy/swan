@@ -163,6 +163,17 @@ export function ChartIcon({ size = 16, stroke = 'currentColor', style }: IconPro
   )
 }
 
+export function ZoneIcon({ size = 16, stroke = 'currentColor', style }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" style={style} {...base(size)}>
+      <path d="M3.2 5.1L7.4 2.2L13 4.6L12.3 11.2L6.6 13.8L2.6 10.4Z" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" />
+      <circle cx="3.2" cy="5.1" r="1.3" stroke={stroke} strokeWidth="1.3" />
+      <circle cx="13" cy="4.6" r="1.3" stroke={stroke} strokeWidth="1.3" />
+      <circle cx="6.6" cy="13.8" r="1.3" stroke={stroke} strokeWidth="1.3" />
+    </svg>
+  )
+}
+
 export function ShieldIcon({ size = 16, stroke = 'currentColor', style }: IconProps) {
   return (
     <svg viewBox="0 0 16 16" style={style} {...base(size)}>

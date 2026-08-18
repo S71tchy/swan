@@ -27,10 +27,12 @@ from app.models import (
     Place,
     Profile,
     User,
+    Zone,
 )
 from app import email_policy
 from app.notifications import service as notify
 from app.notifications.templates import CATALOG, CATALOG_BY_KEY, default_template
+from app import geo
 from app.reference import COUNTRY_CATALOGUE, country_meta
 from app.rights import (
     effective_external_countries,
@@ -753,6 +755,197 @@ def delete_email_domain(
         detail={"note": rule.note},
     )
     db.delete(rule)
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Zones (custom polygon / radius areas)
+#
+# The third kind of geography, after a point and a country. Two rules here are
+# load-bearing:
+#
+#   The country list is DECLARED, never derived from the shape. Rights state who
+#   holds authority; inferring them from geometry would mean nudging a vertex
+#   changes who may approve an alert. The drawing UI suggests countries from the
+#   map and a human confirms them.
+#
+#   For kind="radius" the centre + radius are the truth and the ring is
+#   regenerated here on every write. Accepting a client-sent ring for a radius
+#   zone would let the two drift, and the zone would stop being editable as a
+#   radius the first time it was saved.
+# --------------------------------------------------------------------------- #
+def _zone_usage(alerts: list[Alert]) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for a in alerts:
+        for loc in a.locations or []:
+            if loc.get("scope") == "zone" and loc.get("code"):
+                usage[loc["code"]] = usage.get(loc["code"], 0) + 1
+    return usage
+
+
+def _zone_row(z: Zone, usage: dict[str, int]) -> schemas.ZoneRow:
+    return schemas.ZoneRow(
+        code=z.code,
+        name=z.name,
+        kind=z.kind,
+        countries=list(z.countries or []),
+        country_names=[country_meta(c)["name"] for c in (z.countries or [])],
+        geometry=z.geometry or {},
+        lat=z.lat,
+        lng=z.lng,
+        radius_m=z.radius_m,
+        aliases=list(z.aliases or []),
+        notes=z.notes or "",
+        usage=usage.get(z.code, 0),
+    )
+
+
+def _zone_geometry(kind, geometry, lat, lng, radius_m):
+    """Resolve the stored ring and representative point for either kind."""
+    try:
+        if kind == "radius":
+            if lat is None or lng is None or radius_m is None:
+                raise geo.GeometryError("A radius zone needs a centre and a radius")
+            ring = geo.circle_polygon(lat, lng, float(radius_m))
+            return ring, float(lat), float(lng), float(radius_m)
+        ring = geo.validate_polygon(geometry)
+        # Centroid unless an explicit point was supplied: a strait reads best
+        # labelled at its middle, but an operator may want the pin elsewhere.
+        clat, clng = geo.polygon_centroid(ring)
+        return (
+            ring,
+            float(lat) if lat is not None else clat,
+            float(lng) if lng is not None else clng,
+            None,
+        )
+    except geo.GeometryError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+
+def _zone_kind(kind: str) -> str:
+    k = (kind or "polygon").strip().lower()
+    if k not in ("polygon", "radius"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "kind must be polygon or radius"
+        )
+    return k
+
+
+@router.get("/zones", response_model=list[schemas.ZoneRow])
+def list_zones(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
+    usage = _zone_usage(db.query(Alert).all())
+    return [_zone_row(z, usage) for z in db.query(Zone).order_by(Zone.name).all()]
+
+
+@router.post("/zones", response_model=schemas.ZoneRow, status_code=status.HTTP_201_CREATED)
+def create_zone(
+    body: schemas.ZoneCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    code = (body.code or "").strip().upper()
+    if not code:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A zone code is required")
+    if db.get(Zone, code):
+        raise HTTPException(status.HTTP_409_CONFLICT, "A zone with that code already exists")
+    if not (body.name or "").strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A zone name is required")
+    kind = _zone_kind(body.kind)
+    ring, lat, lng, radius = _zone_geometry(kind, body.geometry, body.lat, body.lng, body.radius_m)
+
+    zone = Zone(
+        code=code,
+        name=body.name.strip(),
+        kind=kind,
+        countries=_validate_countries(body.countries),
+        geometry=ring,
+        lat=lat,
+        lng=lng,
+        radius_m=radius,
+        aliases=[a.strip() for a in (body.aliases or []) if a.strip()],
+        notes=(body.notes or "").strip(),
+        created_by=actor.id,
+    )
+    db.add(zone)
+    db.flush()
+    audit.record(
+        db, actor, "zone.created", code, target_type="zone",
+        detail={
+            "name": zone.name, "kind": kind, "countries": zone.countries,
+            "points": len(ring["coordinates"][0]),
+        },
+    )
+    db.commit()
+    return _zone_row(zone, _zone_usage(db.query(Alert).all()))
+
+
+@router.patch("/zones/{code}", response_model=schemas.ZoneRow)
+def update_zone(
+    code: str,
+    body: schemas.ZoneUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    zone = db.get(Zone, code.strip().upper())
+    if not zone:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zone not found")
+    updates = body.model_dump(exclude_unset=True)
+    before = {"countries": list(zone.countries or []), "kind": zone.kind}
+
+    if updates.get("name"):
+        zone.name = updates["name"].strip()
+    if "notes" in updates and updates["notes"] is not None:
+        zone.notes = updates["notes"].strip()
+    if "aliases" in updates and updates["aliases"] is not None:
+        zone.aliases = [a.strip() for a in updates["aliases"] if a.strip()]
+    if "countries" in updates:
+        zone.countries = _validate_countries(updates["countries"])
+
+    # Geometry is re-resolved whenever any part of it moves, so switching kind
+    # (radius to polygon or back) can never leave a stale ring behind.
+    touches_shape = any(k in updates for k in ("kind", "geometry", "lat", "lng", "radius_m"))
+    if touches_shape:
+        kind = _zone_kind(updates.get("kind", zone.kind))
+        ring, lat, lng, radius = _zone_geometry(
+            kind,
+            updates.get("geometry", zone.geometry),
+            updates.get("lat", zone.lat),
+            updates.get("lng", zone.lng),
+            updates.get("radius_m", zone.radius_m),
+        )
+        zone.kind, zone.geometry = kind, ring
+        zone.lat, zone.lng, zone.radius_m = lat, lng, radius
+
+    after = {"countries": list(zone.countries or []), "kind": zone.kind}
+    audit.record(
+        db, actor, "zone.updated", zone.code, target_type="zone",
+        detail={"fields": list(updates), "changed": _diff(before, after)},
+    )
+    db.commit()
+    return _zone_row(zone, _zone_usage(db.query(Alert).all()))
+
+
+@router.delete("/zones/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_zone(
+    code: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    zone = db.get(Zone, code.strip().upper())
+    if not zone:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zone not found")
+    usage = _zone_usage(db.query(Alert).all()).get(zone.code, 0)
+    if usage:
+        # Alerts carry their own copy of the shape, so deleting would not break
+        # them. It would still remove a zone people are actively filing against,
+        # which is a decision rather than a tidy-up. Same rule as the gazetteer.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{usage} alert(s) reference this zone; it stays on those alerts. "
+            "Remove it from the master only if it was added in error.",
+        )
+    audit.record(db, actor, "zone.deleted", zone.code, target_type="zone", detail={"name": zone.name})
+    db.delete(zone)
     db.commit()
 
 

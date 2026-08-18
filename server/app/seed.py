@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.database import Base, SessionLocal, engine
+from app import geo
 from app.email_policy import DEFAULT_BLOCKED_DOMAINS
 from app.enums import CATEGORIES, INDUSTRIES
 from app.models import (
@@ -21,6 +22,7 @@ from app.models import (
     Place,
     Profile,
     User,
+    Zone,
 )
 from app.reference import PLACES, STANDARD_PROFILES, country_meta
 from app.rights import is_rights_manager
@@ -98,6 +100,7 @@ def reset(db) -> None:
     db.query(Category).delete()
     db.query(Industry).delete()
     db.query(EmailDomainRule).delete()
+    db.query(Zone).delete()
     db.commit()
 
 
@@ -125,6 +128,97 @@ def seed_email_domains(db) -> None:
     """
     for pattern, note in DEFAULT_BLOCKED_DOMAINS:
         db.add(EmailDomainRule(pattern=pattern, note=note, active=True))
+    db.commit()
+
+
+# Maritime chokepoints and one land corridor: the cases a pin cannot express.
+# Each declares the countries whose rights govern alerts filed on it -- declared,
+# not derived from the shape (see models.Zone). SUEZ-CANAL is deliberately a
+# radius zone so both kinds exist out of the box, and MALACCA-STRAIT declares
+# three countries so the full-coverage approval rule has something to bite on.
+SEED_ZONES = [
+    {
+        "code": "HORMUZ", "name": "Strait of Hormuz", "kind": "polygon",
+        "countries": ["IR", "OM", "AE"],
+        "aliases": ["hormuz", "persian gulf entrance"],
+        "notes": "Tanker chokepoint between the Gulf and the Gulf of Oman.",
+        "ring": [
+            [55.95, 26.05], [56.40, 26.65], [56.90, 26.60], [57.10, 26.10],
+            [56.60, 25.60], [56.05, 25.70],
+        ],
+    },
+    {
+        "code": "BAB-EL-MANDEB", "name": "Bab el-Mandeb", "kind": "polygon",
+        "countries": ["YE", "DJ", "ER"],
+        "aliases": ["mandeb", "red sea entrance"],
+        "notes": "Southern entrance to the Red Sea.",
+        "ring": [
+            [43.20, 12.85], [43.55, 12.75], [43.65, 12.35], [43.35, 12.10],
+            [43.00, 12.30], [42.95, 12.70],
+        ],
+    },
+    {
+        "code": "MALACCA-STRAIT", "name": "Strait of Malacca", "kind": "polygon",
+        "countries": ["MY", "ID", "SG"],
+        "aliases": ["malacca", "melaka"],
+        "notes": "Principal Asia-Europe container lane.",
+        "ring": [
+            [100.20, 3.60], [101.40, 2.80], [103.60, 1.30], [104.10, 1.05],
+            [103.40, 0.85], [101.00, 2.20], [99.70, 3.30],
+        ],
+    },
+    {
+        "code": "GIBRALTAR", "name": "Strait of Gibraltar", "kind": "polygon",
+        "countries": ["ES", "MA", "GI"],
+        "aliases": ["gibraltar"],
+        "notes": "Mediterranean western entrance.",
+        "ring": [
+            [-5.95, 36.05], [-5.30, 36.15], [-5.25, 35.85], [-5.90, 35.75],
+        ],
+    },
+    {
+        "code": "SUEZ-CANAL", "name": "Suez Canal approach", "kind": "radius",
+        "countries": ["EG"],
+        "aliases": ["suez"],
+        "notes": "Canal transit and its northern approach anchorage.",
+        "centre": (31.25, 32.35), "radius_m": 65000,
+    },
+    {
+        "code": "TAIWAN-STRAIT", "name": "Taiwan Strait", "kind": "polygon",
+        # Declares no country: contested and largely international waters, so
+        # alerts filed here are orphaned and escalate to Rights Managers, which
+        # is the honest answer rather than inventing an owner.
+        "countries": [],
+        "aliases": ["taiwan", "formosa strait"],
+        "notes": "No declared perimeter -- alerts here escalate to Rights Managers.",
+        "ring": [
+            [118.20, 24.40], [120.00, 25.40], [121.00, 25.00], [120.20, 23.20],
+            [118.60, 22.90], [117.90, 23.60],
+        ],
+    },
+]
+
+
+def seed_zones(db) -> None:
+    """Seed the custom zones. Geometry is built through app.geo, so the seeded
+    rings are validated and closed by exactly the code the API uses."""
+    for z in SEED_ZONES:
+        if z["kind"] == "radius":
+            lat, lng = z["centre"]
+            ring = geo.circle_polygon(lat, lng, z["radius_m"])
+            radius = float(z["radius_m"])
+        else:
+            ring = geo.validate_polygon({"type": "Polygon", "coordinates": [z["ring"]]})
+            lat, lng = geo.polygon_centroid(ring)
+            radius = None
+        db.add(
+            Zone(
+                code=z["code"], name=z["name"], kind=z["kind"],
+                countries=list(z["countries"]), geometry=ring,
+                lat=lat, lng=lng, radius_m=radius,
+                aliases=list(z.get("aliases", [])), notes=z.get("notes", ""),
+            )
+        )
     db.commit()
 
 
@@ -482,6 +576,7 @@ def main() -> None:
         reset(db)
         seed_taxonomy(db)
         seed_email_domains(db)
+        seed_zones(db)
         seed_places(db)
         seed_profiles(db)
         users = seed_users(db)
@@ -492,6 +587,7 @@ def main() -> None:
             "industries": db.query(Industry).count(),
             "blocked_domains": db.query(EmailDomainRule).count(),
             "places": db.query(Place).count(),
+            "zones": db.query(Zone).count(),
             "profiles": db.query(Profile).count(),
             "users": db.query(User).count(),
             "alerts": db.query(Alert).count(),

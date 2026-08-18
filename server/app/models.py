@@ -95,6 +95,51 @@ class Industry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class Zone(Base):
+    """A custom area of concern: a drawn polygon or a radius around a point.
+
+    The third kind of geography, after a point (Place) and a whole country. It
+    exists for the things that are neither: the Strait of Hormuz, the Bab
+    el-Mandeb, an anchorage, a corridor of road between two cities.
+
+    Kept as its own table rather than as columns on `Place` because a place is a
+    point with a LOCODE and exactly one country -- a shape the gazetteer screen,
+    the usage counter and `seed_places.sql` all assume. Geometry is GeoJSON in a
+    JSON column, so the PostGIS deferral to Phase 2 stays intact.
+
+    `countries` is the zone's **declared** rights perimeter, not something
+    derived from the shape: rights say who has authority, and inferring them
+    from geometry would let dragging a vertex change who may approve an alert.
+    The drawing UI suggests the list from the map; a human confirms it. A zone
+    may legitimately declare *no* country (international waters), in which case
+    alerts on it are orphaned and escalate to Rights Managers -- the existing
+    escape hatch, not a new one.
+
+    For `kind="radius"` the centre and `radius_m` are the source of truth and
+    `geometry` is regenerated from them on every save (see app.geo). Storing only
+    the derived polygon would mean a radius zone stops being editable as a radius
+    the moment it is saved.
+    """
+
+    __tablename__ = "zones"
+
+    code: Mapped[str] = mapped_column(String, primary_key=True)  # e.g. HORMUZ
+    name: Mapped[str] = mapped_column(String, index=True)
+    kind: Mapped[str] = mapped_column(String, default="polygon")  # polygon | radius
+    countries: Mapped[list] = mapped_column(JSON, default=list)   # declared ISO2 perimeter
+    geometry: Mapped[dict] = mapped_column(JSON, default=dict)    # GeoJSON Polygon
+    # Representative point. Clustering, flyTo and MapSearch all assume every
+    # location block has coordinates; a block without them vanishes from the map
+    # instead of failing loudly (the same reason nationwide blocks carry one).
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    radius_m: Mapped[float | None] = mapped_column(Float, nullable=True)  # kind=radius only
+    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    notes: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
 class EmailDomainRule(Base):
     """A blocked email-domain pattern (Settings → Email domains).
 

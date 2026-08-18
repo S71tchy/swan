@@ -15,6 +15,7 @@
  * being offered in a picker that the map can't draw.
  */
 export { ISO3, CENTROID } from './countryData'
+import { ISO3 } from './countryData'
 
 /** ISO2 → ISO3 (`ISO3`)
  *
@@ -49,6 +50,17 @@ export { ISO3, CENTROID } from './countryData'
  * nationwide block for a country must share one code to collapse into a single
  * marker — and it must not collide with a real LOCODE from the gazetteer.
  */
+/** ADM0_A3 -> ISO2, the reverse of `ISO3`.
+ *
+ * Built from the generated table rather than written out, so it cannot drift
+ * from it. Needed by the zone editor, which reads country features straight out
+ * of the basemap tiles to suggest a zone's perimeter: the tiles hand back
+ * `ADM0_A3` and every rights decision in SWAN is keyed on ISO2.
+ */
+export const ISO2_FROM_ISO3: Record<string, string> = Object.fromEntries(
+  Object.entries(ISO3).map(([iso2, a3]) => [a3, iso2]),
+)
+
 export function nationwideCode(country: string): string {
   return `${country.toUpperCase()}-NATIONWIDE`
 }

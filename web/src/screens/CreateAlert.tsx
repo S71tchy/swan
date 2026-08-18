@@ -10,7 +10,7 @@ import { PictureField } from '../components/PictureField'
 import { CountryFlag } from '../components/CountryFlag'
 import { SEVERITY_COLOR, MODE_GLYPH, MODE_LABEL, externalUrl } from '../lib/format'
 import { CENTROID, nationwideCode } from '../lib/countries'
-import type { CountryRef, ExternalVariant, Flow, LocationBlock, LocationScope, Place, RoutingInfo, Severity, TransportMode, Taxonomy } from '../types'
+import type { CountryRef, ExternalVariant, Flow, LocationBlock, LocationScope, Place, RoutingInfo, Severity, TransportMode, Taxonomy, ZoneRow } from '../types'
 
 function slugCode(country: string, name: string): string {
   const base = name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'LOC'
@@ -546,6 +546,50 @@ function CountrySelect({
   )
 }
 
+function ZoneSelect({
+  value,
+  zones,
+  onPick,
+}: {
+  value: string
+  zones: ZoneRow[]
+  onPick: (z: ZoneRow) => void
+}) {
+  const current = zones.find((z) => z.code === value)
+  return (
+    <div>
+      <select
+        value={value}
+        onChange={(e) => {
+          const z = zones.find((x) => x.code === e.target.value)
+          if (z) onPick(z)
+        }}
+        style={{ ...fieldStyle, appearance: 'none' }}
+      >
+        <option value="" disabled>
+          {zones.length ? 'Select a zone…' : 'No zones defined yet'}
+        </option>
+        {zones.map((z) => (
+          <option key={z.code} value={z.code}>
+            {z.name}
+          </option>
+        ))}
+      </select>
+      {current && (
+        <div style={{ font: '400 10.5px/1.5 var(--font-body)', color: 'var(--t-45)', marginTop: 5 }}>
+          {current.kind === 'radius'
+            ? `${Math.round((current.radius_m ?? 0) / 100) / 10} km radius`
+            : `${Math.max(0, current.geometry.coordinates[0].length - 1)}-point area`}
+          {' · '}
+          {current.countries.length
+            ? `rights: ${current.countries.join(', ')}`
+            : 'no rights perimeter — routes to Rights Managers'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function LocationBlockEditor({
   block,
   onChange,
@@ -553,6 +597,7 @@ function LocationBlockEditor({
   onRemove,
   canRemove,
   countries,
+  zones,
   canPromote,
 }: {
   block: DraftLocation
@@ -561,9 +606,12 @@ function LocationBlockEditor({
   onRemove: () => void
   canRemove: boolean
   countries: CountryRef[]
+  zones: ZoneRow[]
   canPromote: boolean
 }) {
-  const isCountry = block.scope === 'country'
+  const scope: LocationScope = block.scope ?? 'point'
+  const isCountry = scope === 'country'
+  const isZone = scope === 'zone'
 
   function toggleMode(m: TransportMode) {
     const has = block.modes.includes(m)
@@ -573,12 +621,40 @@ function LocationBlockEditor({
   /** Switching scope clears the place identity, because a port and a whole
    *  country are not the same selection wearing different labels — carrying
    *  "Apapa" over into a nationwide block would publish a mislabelled alert. */
-  function setScope(scope: LocationScope) {
-    if (scope === 'country') {
-      onChange({ ...block, scope, name: '', code: '', lat: undefined, lng: undefined })
-    } else {
-      onChange({ ...block, scope, name: '', code: '', country: '', country_name: '', flag: '' })
+  function setScope(next: LocationScope) {
+    const cleared = {
+      ...block,
+      scope: next,
+      name: '',
+      code: '',
+      countries: undefined,
+      geometry: undefined,
     }
+    if (next === 'country') {
+      onChange({ ...cleared, lat: undefined, lng: undefined })
+    } else {
+      onChange({ ...cleared, country: '', country_name: '', flag: '', lat: undefined, lng: undefined })
+    }
+  }
+
+  /** A zone fills the block from master data: its own shape (so the alert keeps
+   *  drawing correctly even if the zone is later edited), its declared country
+   *  perimeter (which is what every rights decision reads), and its centroid,
+   *  because clustering, `flyTo` and map search all assume coordinates. */
+  function setZone(z: ZoneRow) {
+    onChange({
+      ...block,
+      scope: 'zone',
+      name: z.name,
+      code: z.code,
+      country: '',
+      country_name: '',
+      flag: '',
+      countries: [...z.countries],
+      geometry: z.geometry,
+      lat: z.lat,
+      lng: z.lng,
+    })
   }
 
   /** A nationwide block still needs coordinates — clustering, `flyTo` and map
@@ -621,21 +697,38 @@ function LocationBlockEditor({
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.6fr 1fr', gap: 14, alignItems: 'end' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-            <Label>{isCountry ? 'Country' : 'Location'}{req}</Label>
-            <span
-              onClick={() => setScope(isCountry ? 'point' : 'country')}
-              style={{
-                font: '500 10.5px var(--font-body)',
-                color: 'var(--agl-yellow)',
-                cursor: 'pointer',
-                marginBottom: 6,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {isCountry ? 'Use a specific place' : 'Flag a whole country'}
-            </span>
+            <Label>{isCountry ? 'Country' : isZone ? 'Zone' : 'Location'}{req}</Label>
+            {/* Three scopes need a control that shows all three at once. As a
+                two-state text link ("Flag a whole country") a third option had
+                nowhere to live, and the current scope was only inferable from
+                the label of the thing it would switch to. */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+              {([
+                ['point', 'Place'],
+                ['country', 'Country'],
+                ['zone', 'Zone'],
+              ] as [LocationScope, string][]).map(([value, label]) => (
+                <span
+                  key={value}
+                  onClick={() => scope !== value && setScope(value)}
+                  style={{
+                    font: '600 10px var(--font-display)',
+                    padding: '3px 8px',
+                    borderRadius: 7,
+                    cursor: scope === value ? 'default' : 'pointer',
+                    color: scope === value ? 'var(--agl-navy)' : 'var(--t-55)',
+                    background: scope === value ? 'var(--agl-yellow)' : 'rgba(255,255,255,.05)',
+                    border: '1px solid ' + (scope === value ? 'transparent' : 'var(--border-soft)'),
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
           </div>
-          {isCountry ? (
+          {isZone ? (
+            <ZoneSelect value={block.code ?? ''} zones={zones} onPick={setZone} />
+          ) : isCountry ? (
             <CountrySelect value={block.country ?? ''} countries={countries} onPick={setCountry} />
           ) : (
             <LocationPicker
@@ -722,6 +815,7 @@ export default function CreateAlert() {
   const { user } = useAuth()
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null)
   const [countries, setCountries] = useState<CountryRef[]>([])
+  const [zones, setZones] = useState<ZoneRow[]>([])
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('')
   const [subCategory, setSubCategory] = useState('')
@@ -746,6 +840,7 @@ export default function CreateAlert() {
   useEffect(() => {
     void api.taxonomy().then(setTaxonomy)
     void api.countries().then(setCountries).catch(() => setCountries([]))
+    void api.zones().then(setZones).catch(() => setZones([]))
   }, [])
 
   // Continue editing an existing draft/rejected alert (route /create/:id).
@@ -774,7 +869,18 @@ export default function CreateAlert() {
   // Coordinates are part of "complete": the server requires lat/lng on every
   // location block, so a half-filled block must not reach POST /alerts and 422.
   const completedLocations = useMemo(
-    () => locations.filter((l) => l.country && l.modes.length > 0 && l.lat != null && l.lng != null),
+    () =>
+      locations.filter(
+        (l) =>
+          // A zone carries `countries` (possibly empty, for open water) instead
+          // of the singular `country`, so completeness is its code and shape.
+          // Without this, a zone block was filtered out here and the form
+          // behaved as though no location had been chosen at all.
+          (l.scope === 'zone' ? !!l.code : !!l.country) &&
+          l.modes.length > 0 &&
+          l.lat != null &&
+          l.lng != null,
+      ),
     [locations],
   )
 
@@ -1125,6 +1231,7 @@ export default function CreateAlert() {
                 index={i}
                 block={block}
                 countries={countries}
+                zones={zones}
                 canPromote={canPromote}
                 canRemove={locations.length > 1}
                 onChange={(b) => setLocations((ls) => ls.map((x, j) => (j === i ? b : x)))}

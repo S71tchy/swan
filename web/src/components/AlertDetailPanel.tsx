@@ -161,8 +161,21 @@ export function AlertDetailPanel({ alert, onClose, onCloseAlert, canClose }: Pro
           {loc && <ChipOutline>{flowLabel(loc.flow)}</ChipOutline>}
           {loc && (
             <ChipOutline accent>
-              <CountryFlag code={loc.country} size={14} title={loc.country_name} style={{ marginRight: 5 }} />
-              {loc.scope === 'country' ? locationLabel(loc) : `${placeLabel(loc.name)}, ${loc.country}`}
+              {/* A zone spans several countries or none, so it shows every flag
+                  in its declared perimeter instead of one -- `loc.country` is
+                  empty on a zone block and would render a blank disc. */}
+              {loc.scope === 'zone' ? (
+                (loc.countries ?? []).map((c) => (
+                  <CountryFlag key={c} code={c} size={14} title={c} style={{ marginRight: 5 }} />
+                ))
+              ) : (
+                <CountryFlag code={loc.country} size={14} title={loc.country_name} style={{ marginRight: 5 }} />
+              )}
+              {loc.scope === 'country'
+                ? locationLabel(loc)
+                : loc.scope === 'zone'
+                  ? loc.name
+                  : `${placeLabel(loc.name)}, ${loc.country}`}
             </ChipOutline>
           )}
         </div>

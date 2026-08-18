@@ -47,9 +47,16 @@ def alert_country_codes(alert_or_locations) -> list[str]:
     )
     seen: list[str] = []
     for loc in locations or []:
-        code = (loc.get("country") or "").upper()
-        if code and code not in seen:
-            seen.append(code)
+        # A zone block spans several countries (Hormuz is IR + OM) or none at
+        # all (open ocean), so `countries` is read alongside the singular
+        # `country` every other block kind carries. Missing on older alerts,
+        # hence the `or []` -- and a zone declaring no country contributes
+        # nothing here, which is what makes it orphan and escalate.
+        codes = [loc.get("country")] + list(loc.get("countries") or [])
+        for raw in codes:
+            code = (raw or "").upper()
+            if code and code not in seen:
+                seen.append(code)
     return seen
 
 

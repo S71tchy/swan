@@ -37,6 +37,8 @@ import type {
   TemplatePreview,
   UserMe,
   UserPublic,
+  ZoneInput,
+  ZoneRow,
 } from './types'
 
 const BASE = '/api'
@@ -184,6 +186,19 @@ export const api = {
     }),
   adminDeletePlace: (code: string) =>
     req<void>(`/admin/places/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+
+  // zones — custom polygon / radius areas
+  zones: () => req<ZoneRow[]>('/meta/zones'),
+  adminZones: () => req<ZoneRow[]>('/admin/zones'),
+  adminCreateZone: (body: ZoneInput) =>
+    req<ZoneRow>('/admin/zones', { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdateZone: (code: string, body: Partial<ZoneInput>) =>
+    req<ZoneRow>(`/admin/zones/${encodeURIComponent(code)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  adminDeleteZone: (code: string) =>
+    req<void>(`/admin/zones/${encodeURIComponent(code)}`, { method: 'DELETE' }),
 
   // admin — a user's notification subscriptions
   adminUserSubscriptions: (userId: string) =>
