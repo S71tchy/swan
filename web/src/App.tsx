@@ -3,6 +3,7 @@ import { useAuth } from './auth'
 import Login from './screens/Login'
 import Dashboard from './screens/Dashboard'
 import Feed from './screens/Feed'
+import Analytics from './screens/Analytics'
 import CreateAlert from './screens/CreateAlert'
 import Approvals from './screens/Approvals'
 import Profile from './screens/Profile'
@@ -68,6 +69,14 @@ export default function App() {
         element={
           <RequireAuth>
             <Feed />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <RequireAuth>
+            <Analytics />
           </RequireAuth>
         }
       />

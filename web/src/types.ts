@@ -339,6 +339,89 @@ export interface IndustryRow {
   usage: number
 }
 
+// --- Analytics ---
+export interface NamedCount {
+  name: string
+  count: number
+}
+
+export interface CountryCount {
+  code: string
+  name: string
+  count: number
+}
+
+export interface SeriesPoint {
+  bucket: string
+  info: number
+  watch: number
+  warning: number
+  critical: number
+  total: number
+}
+
+export interface AnalyticsTotals {
+  alerts: number
+  previous_alerts: number
+  live_now: number
+  published: number
+  closed: number
+  expired: number
+  countries: number
+  authors: number
+  open_ended: number
+  median_days_live: number | null
+}
+
+/** Rights-Manager only — absent from the payload entirely for everyone else. */
+export interface PipelineStats {
+  draft: number
+  submitted: number
+  rejected: number
+  published: number
+  closed: number
+  rejection_rate: number | null
+  median_approval_hours: number | null
+  via_approval: number
+  direct_publish: number
+  top_authors: NamedCount[]
+}
+
+export interface AnalyticsSummary {
+  range: { start: string; end: string; bucket: 'day' | 'week' | 'month'; days: number }
+  totals: AnalyticsTotals
+  severity: Record<Severity, number>
+  series: SeriesPoint[]
+  by_category: NamedCount[]
+  by_sub_category: NamedCount[]
+  by_industry: NamedCount[]
+  by_mode: NamedCount[]
+  by_country: CountryCount[]
+  pipeline: PipelineStats | null
+}
+
+export interface AnalyticsRow {
+  id: string
+  title: string
+  status: string
+  severity: string
+  category: string
+  sub_category: string
+  industry: string | null
+  countries: string[]
+  modes: string[]
+  effective_at: string | null
+  published_at: string | null
+  closed_at: string | null
+  valid_from: string | null
+  valid_to: string | null
+}
+
+export interface AnalyticsRows {
+  total: number
+  rows: AnalyticsRow[]
+}
+
 // --- Notification triggers + unsubscribe ---
 /** One subscribable trigger, from the server template catalog. */
 export interface NotificationTrigger {

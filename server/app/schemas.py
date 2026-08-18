@@ -485,6 +485,103 @@ class IndustryUpdate(BaseModel):
 # --------------------------------------------------------------------------- #
 # Email domain policy (blocked domains for registration / user creation)
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Analytics (Settings-free reporting section)
+# --------------------------------------------------------------------------- #
+class NamedCount(BaseModel):
+    name: str
+    count: int
+
+
+class CountryCount(BaseModel):
+    code: str
+    name: str
+    count: int
+
+
+class SeriesPoint(BaseModel):
+    """One bucket of the volume chart, split by severity so the stack can be
+    drawn without a second request."""
+
+    bucket: str          # ISO date of the bucket start
+    info: int
+    watch: int
+    warning: int
+    critical: int
+    total: int
+
+
+class RangeInfo(BaseModel):
+    start: str
+    end: str
+    bucket: str          # day | week | month, chosen from the span
+    days: int
+
+
+class AnalyticsTotals(BaseModel):
+    alerts: int
+    previous_alerts: int   # equal-length preceding window, for the delta
+    live_now: int          # published AND inside its validity window today
+    published: int
+    closed: int
+    expired: int
+    countries: int
+    authors: int
+    open_ended: int        # published with no valid_to ("until further notice")
+    median_days_live: float | None = None
+
+
+class PipelineStats(BaseModel):
+    """Rights-Manager-only. Absent from the payload entirely for everyone else —
+    drafts have never been visible to anyone but their author."""
+
+    draft: int
+    submitted: int
+    rejected: int
+    published: int
+    closed: int
+    rejection_rate: float | None = None
+    median_approval_hours: float | None = None
+    via_approval: int
+    direct_publish: int
+    top_authors: list[NamedCount]
+
+
+class AnalyticsSummary(BaseModel):
+    range: RangeInfo
+    totals: AnalyticsTotals
+    severity: SeverityBreakdown
+    series: list[SeriesPoint]
+    by_category: list[NamedCount]
+    by_sub_category: list[NamedCount]
+    by_industry: list[NamedCount]
+    by_mode: list[NamedCount]
+    by_country: list[CountryCount]
+    pipeline: PipelineStats | None = None
+
+
+class AnalyticsRow(BaseModel):
+    id: str
+    title: str
+    status: str
+    severity: str
+    category: str
+    sub_category: str = ""
+    industry: str | None = None
+    countries: list[str]
+    modes: list[str]
+    effective_at: datetime | None = None
+    published_at: datetime | None = None
+    closed_at: datetime | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+
+
+class AnalyticsRows(BaseModel):
+    total: int
+    rows: list[AnalyticsRow]
+
+
 class NotificationTrigger(BaseModel):
     """One subscribable trigger, straight from the template catalog. The editor
     builds its event pills from this, so a new template becomes selectable

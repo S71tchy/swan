@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { ApprovalsIcon, FeedIcon, HomeIcon, RightsIcon, SettingsIcon } from './icons'
+import { ApprovalsIcon, ChartIcon, FeedIcon, HomeIcon, RightsIcon, SettingsIcon } from './icons'
 
 // The rail is DESTINATIONS ONLY. Actions live in the TopBar (Create alert) and
 // search lives where the data is (the feed's own search box, the dashboard's map
@@ -148,6 +148,10 @@ export function LeftRail() {
   const items: Item[] = [
     { key: 'home', title: 'Map', path: '/', icon: (a) => <HomeIcon stroke={activeStroke(a)} /> },
     { key: 'feed', title: 'Live feed', path: '/feed', icon: (a) => <FeedIcon stroke={activeStroke(a)} /> },
+    // A destination, not an action: statistics across the whole corpus, which is
+    // a different question from "what is happening now" (Map) or "what was
+    // published" (Live feed) rather than another door to either.
+    { key: 'analytics', title: 'Analytics', path: '/analytics', icon: (a) => <ChartIcon stroke={activeStroke(a)} /> },
     ...(canApprove
       ? [
           {
@@ -165,6 +169,7 @@ export function LeftRail() {
   const activeKey = (() => {
     if (location.pathname === '/') return 'home'
     if (location.pathname.startsWith('/feed')) return 'feed'
+    if (location.pathname.startsWith('/analytics')) return 'analytics'
     if (location.pathname.startsWith('/approvals')) return 'approvals'
     if (location.pathname.startsWith('/admin')) return 'settings'
     if (location.pathname.startsWith('/profile')) return 'profile'

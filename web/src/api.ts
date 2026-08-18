@@ -3,6 +3,8 @@
 // built app from one origin — so the session cookie is always same-site.
 import type {
   AdminUserInput,
+  AnalyticsRows,
+  AnalyticsSummary,
   AdminUserRow,
   Alert,
   ApprovalQueue,
@@ -38,6 +40,8 @@ import type {
 } from './types'
 
 const BASE = '/api'
+/** Same-origin API root, for links the browser must follow itself (CSV download). */
+export const API_BASE = BASE
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
@@ -107,6 +111,11 @@ export const api = {
 
   /** Is a corporate address required to register? Login screen hint only. */
   registrationPolicy: () => req<RegistrationPolicy>('/meta/registration-policy'),
+
+  // analytics — aggregates computed server-side; the browser never holds the
+  // corpus (and these payloads never include alert pictures).
+  analyticsSummary: (query: string) => req<AnalyticsSummary>(`/analytics/summary?${query}`),
+  analyticsRows: (query: string) => req<AnalyticsRows>(`/analytics/alerts?${query}`),
 
   // alerts
   feed: (scope: 'published' | 'map' | 'mine' = 'published') =>

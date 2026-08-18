@@ -153,6 +153,16 @@ export function BellIcon({ size = 16, stroke = 'currentColor', style }: IconProp
   )
 }
 
+export function ChartIcon({ size = 16, stroke = 'currentColor', style }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" style={style} {...base(size)}>
+      <path d="M2 14V2" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M2 14H14" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M5.4 14V9.2M8.6 14V5.4M11.8 14V7.2" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function ShieldIcon({ size = 16, stroke = 'currentColor', style }: IconProps) {
   return (
     <svg viewBox="0 0 16 16" style={style} {...base(size)}>
