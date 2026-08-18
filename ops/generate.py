@@ -3,7 +3,8 @@ place lists can't drift from what the app validates against.
 
 Run from the repo root, with the server package importable:
 
-    PYTHONPATH=server python ops/generate.py ops/grant_admin_rights.sql ops/seed_places.sql ops/seed_taxonomy.sql
+    PYTHONPATH=server python ops/generate.py ops/grant_admin_rights.sql \
+        ops/seed_places.sql ops/seed_taxonomy.sql ops/seed_email_domains.sql
 
 The country list itself comes from app/country_data.py, which ops/build_geo.py
 generates from Natural Earth — so re-run build_geo.py first if the catalogue is
@@ -12,6 +13,7 @@ what changed.
 import json
 import sys
 
+from app.email_policy import DEFAULT_BLOCKED_DOMAINS
 from app.enums import CATEGORIES, INDUSTRIES
 from app.reference import COUNTRY_CATALOGUE, PLACES, STANDARD_PROFILES
 
@@ -181,11 +183,40 @@ t.append("")
 
 taxonomy_sql = "\n".join(t)
 
+# ---- Part 4: the blocked email domains -------------------------------------
+# Same shape and the same reasoning as the taxonomy: app.email_policy holds the
+# *initial* list, the table is authoritative afterwards, and re-running must not
+# resurrect a rule a manager deliberately deleted or re-enable one they paused —
+# hence DO NOTHING rather than DO UPDATE.
+d = []
+d.append("-- =====================================================================")
+d.append("--  SWAN — seed the blocked email domains (registration policy)")
+d.append("--  An empty table is not a neutral default: it means any consumer")
+d.append("--  address may register. Safe to re-run; existing rows are untouched,")
+d.append("--  so a rule an operator paused stays paused.")
+d.append("-- =====================================================================")
+d.append("")
+d.append("INSERT INTO email_domain_rules (pattern, note, active, created_at) VALUES")
+drows = []
+for pattern, note in DEFAULT_BLOCKED_DOMAINS:
+    drows.append(f"  ({q(pattern)}, {q(note)}, true, (now() AT TIME ZONE 'utc'))")
+d.append(",\n".join(drows))
+d.append("ON CONFLICT (pattern) DO NOTHING;")
+d.append("")
+d.append(f"-- Verify: expect at least {len(DEFAULT_BLOCKED_DOMAINS)}")
+d.append("SELECT count(*) AS blocked_domains FROM email_domain_rules;")
+d.append("")
+
+domains_sql = "\n".join(d)
+
 open(sys.argv[1], "w", encoding="utf-8").write(grant_sql)
 open(sys.argv[2], "w", encoding="utf-8").write(places_sql)
 if len(sys.argv) > 3:
     open(sys.argv[3], "w", encoding="utf-8").write(taxonomy_sql)
+if len(sys.argv) > 4:
+    open(sys.argv[4], "w", encoding="utf-8").write(domains_sql)
 print(
     f"countries={len(ALL)} profiles={len(STANDARD_PROFILES)} places={len(PLACES)} "
-    f"categories={len(CATEGORIES)} industries={len(INDUSTRIES)}"
+    f"categories={len(CATEGORIES)} industries={len(INDUSTRIES)} "
+    f"blocked_domains={len(DEFAULT_BLOCKED_DOMAINS)}"
 )

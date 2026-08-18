@@ -476,6 +476,58 @@ class IndustryUpdate(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Email domain policy (blocked domains for registration / user creation)
+# --------------------------------------------------------------------------- #
+class RegistrationPolicy(BaseModel):
+    """Public, deliberately minimal: is a corporate address required? The login
+    screen needs to say so; nobody unauthenticated needs the domain list."""
+
+    corporate_only: bool
+
+
+class EmailDomainRuleRow(BaseModel):
+    pattern: str
+    note: str
+    active: bool
+    # Accounts that already sit on this domain. A rule never removes access, so
+    # this is context, not a warning — except when it is large, which usually
+    # means the pattern is wider than intended.
+    accounts: int
+
+
+class EmailDomainRuleCreate(BaseModel):
+    pattern: str
+    note: str = ""
+    active: bool = True
+
+
+class EmailDomainRuleUpdate(BaseModel):
+    # Renaming the pattern is a delete-plus-create server-side: nothing stores a
+    # reference to it, so there is nothing to cascade (unlike a category).
+    pattern: str | None = None
+    note: str | None = None
+    active: bool | None = None
+
+
+class EmailDomainCheckRequest(BaseModel):
+    email: str
+
+
+class EmailDomainCheckResult(BaseModel):
+    """Answer to 'may I create an account at this address?'.
+
+    Exists so the user editor can validate on its Identity step instead of
+    letting the admin fill in the whole stepped form and eat a 422 at Create —
+    and so that check runs the *same* code as the gate, rather than a second
+    copy of the matching rules in TypeScript.
+    """
+
+    allowed: bool
+    pattern: str | None = None
+    message: str | None = None
+
+
+# --------------------------------------------------------------------------- #
 # Email templates (admin editor)
 # --------------------------------------------------------------------------- #
 class TemplateLocaleData(BaseModel):

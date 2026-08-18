@@ -95,6 +95,30 @@ class Industry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class EmailDomainRule(Base):
+    """A blocked email-domain pattern (Settings → Email domains).
+
+    SWAN is an internal tool, so accounts are meant to sit on corporate
+    addresses. A Rights Manager keeps the list of domains that may *not* be
+    used, and it is checked wherever an account is created: self-service
+    registration from the login screen and admin user creation/email changes.
+
+    `pattern` is the primary key and is stored normalised (lower-case, no
+    leading `@`) so the same domain cannot be listed twice in two spellings.
+    `active` exists so a rule can be lifted for an afternoon — to onboard a
+    contractor on a personal address — without losing it and the note saying
+    why it was there. Matching semantics live in `app.email_policy`.
+    """
+
+    __tablename__ = "email_domain_rules"
+
+    pattern: Mapped[str] = mapped_column(String, primary_key=True)  # e.g. gmail.com, *.edu
+    note: Mapped[str] = mapped_column(String, default="")  # why it's blocked
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
 class User(Base):
     __tablename__ = "users"
 

@@ -20,6 +20,7 @@ from app.deps import require_rights_manager
 from app.models import (
     Alert,
     Category,
+    EmailDomainRule,
     EmailTemplate,
     Industry,
     NotificationSubscription,
@@ -27,6 +28,7 @@ from app.models import (
     Profile,
     User,
 )
+from app import email_policy
 from app.notifications import service as notify
 from app.notifications.templates import CATALOG, CATALOG_BY_KEY, default_template
 from app.reference import COUNTRY_CATALOGUE, country_meta
@@ -213,6 +215,9 @@ def create_user(
     email = body.email.strip().lower()
     if not email:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Email is required")
+    # Same gate as self-registration: a manager creating the account by hand is
+    # still creating an account, and the domain policy is about the address.
+    email_policy.assert_allowed(db, email)
     if db.query(User).filter(User.email == email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A user with that email already exists")
 
@@ -275,6 +280,10 @@ def update_user(
         clash = db.query(User).filter(User.email == email, User.id != user.id).first()
         if clash:
             raise HTTPException(status.HTTP_409_CONFLICT, "Another user already has that email")
+        # Only on an actual change: blocking a domain must not make every future
+        # edit to the accounts already on it unsaveable.
+        if email != user.email:
+            email_policy.assert_allowed(db, email)
         user.email = email
     if "name" in updates and updates["name"] is not None:
         user.name = updates["name"].strip()
@@ -583,6 +592,160 @@ def delete_place(
         )
     audit.record(db, actor, "place.deleted", place.code, target_type="place", detail={"name": place.name})
     db.delete(place)
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Email domain policy
+#
+# The list of domains an account may *not* be created on. Matching lives in
+# app.email_policy — this router only stores the rules and reports what they
+# would catch; every gate (register, create user, change email) calls that same
+# module, so there is one definition of "blocked" in the system.
+#
+# A rule is never applied retroactively: it decides what may be created, not who
+# may sign in. Hence `accounts` on each row — an admin adding a pattern can see
+# how many existing users sit on it before deciding whether it is too wide.
+# --------------------------------------------------------------------------- #
+def _domain_accounts(users: list[User], pattern: str) -> int:
+    return sum(1 for u in users if email_policy.matches(email_policy.domain_of(u.email), pattern))
+
+
+def _domain_row(rule: EmailDomainRule, users: list[User]) -> schemas.EmailDomainRuleRow:
+    return schemas.EmailDomainRuleRow(
+        pattern=rule.pattern,
+        note=rule.note or "",
+        active=rule.active,
+        accounts=_domain_accounts(users, rule.pattern),
+    )
+
+
+def _normalise_or_422(raw: str) -> str:
+    try:
+        return email_policy.normalise_pattern(raw)
+    except email_policy.PatternError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+
+@router.get("/email-domains", response_model=list[schemas.EmailDomainRuleRow])
+def list_email_domains(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
+    rules = db.query(EmailDomainRule).order_by(EmailDomainRule.pattern).all()
+    users = db.query(User).all()
+    return [_domain_row(r, users) for r in rules]
+
+
+# Declared above /{pattern} on purpose: FastAPI matches in declaration order, and
+# a literal path declared after a parameterised one on the same prefix is a trap
+# waiting for the next method added here.
+@router.post("/email-domains/check", response_model=schemas.EmailDomainCheckResult)
+def check_email_domain(
+    body: schemas.EmailDomainCheckRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_rights_manager),
+):
+    """Would this address be refused? Used by the user editor's Identity step."""
+    rule = email_policy.find_blocking_rule(db, body.email)
+    if rule is None:
+        return schemas.EmailDomainCheckResult(allowed=True)
+    return schemas.EmailDomainCheckResult(
+        allowed=False,
+        pattern=rule.pattern,
+        message=email_policy.refusal_message(rule, body.email),
+    )
+
+
+@router.post(
+    "/email-domains",
+    response_model=schemas.EmailDomainRuleRow,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_email_domain(
+    body: schemas.EmailDomainRuleCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    pattern = _normalise_or_422(body.pattern)
+    if db.get(EmailDomainRule, pattern):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"'{pattern}' is already blocked")
+    rule = EmailDomainRule(
+        pattern=pattern,
+        note=(body.note or "").strip(),
+        active=body.active,
+        created_by=actor.id,
+    )
+    db.add(rule)
+    db.flush()
+    users = db.query(User).all()
+    audit.record(
+        db, actor, "email_domain.created", pattern, target_type="email_domain",
+        detail={"note": rule.note, "active": rule.active, "accounts": _domain_accounts(users, pattern)},
+    )
+    db.commit()
+    return _domain_row(rule, users)
+
+
+@router.patch("/email-domains/{pattern}", response_model=schemas.EmailDomainRuleRow)
+def update_email_domain(
+    pattern: str,
+    body: schemas.EmailDomainRuleUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    rule = db.get(EmailDomainRule, _normalise_or_422(pattern))
+    if not rule:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such blocked domain")
+    updates = body.model_dump(exclude_unset=True)
+    before = {"pattern": rule.pattern, "note": rule.note, "active": rule.active}
+
+    if updates.get("note") is not None:
+        rule.note = updates["note"].strip()
+    if updates.get("active") is not None:
+        rule.active = updates["active"]
+
+    new_pattern = _normalise_or_422(updates["pattern"]) if updates.get("pattern") else rule.pattern
+    if new_pattern != rule.pattern:
+        # The pattern is the primary key and nothing references it, so a rename
+        # is a move rather than a cascade: recreate the row and drop the old one.
+        if db.get(EmailDomainRule, new_pattern):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"'{new_pattern}' is already blocked")
+        moved = EmailDomainRule(
+            pattern=new_pattern,
+            note=rule.note,
+            active=rule.active,
+            created_at=rule.created_at,
+            created_by=rule.created_by,
+        )
+        db.delete(rule)
+        db.flush()
+        db.add(moved)
+        db.flush()
+        rule = moved
+
+    after = {"pattern": rule.pattern, "note": rule.note, "active": rule.active}
+    audit.record(
+        db, actor, "email_domain.updated", rule.pattern, target_type="email_domain",
+        detail={"changed": _diff(before, after)},
+    )
+    db.commit()
+    return _domain_row(rule, db.query(User).all())
+
+
+@router.delete("/email-domains/{pattern}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_email_domain(
+    pattern: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_rights_manager),
+):
+    rule = db.get(EmailDomainRule, _normalise_or_422(pattern))
+    if not rule:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such blocked domain")
+    # Nothing stores a reference to a rule, so a delete needs no usage check —
+    # it only widens who may register, and existing accounts are unaffected.
+    audit.record(
+        db, actor, "email_domain.deleted", rule.pattern, target_type="email_domain",
+        detail={"note": rule.note},
+    )
+    db.delete(rule)
     db.commit()
 
 

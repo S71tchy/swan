@@ -333,6 +333,34 @@ export interface IndustryRow {
   usage: number
 }
 
+/** Public answer to "must I use a work address?" — no domain list, by design. */
+export interface RegistrationPolicy {
+  corporate_only: boolean
+}
+
+// --- Blocked email domains (Settings -> Email domains) ---
+export interface EmailDomainRule {
+  /** Normalised server-side: lower-case, no leading '@'. */
+  pattern: string
+  note: string
+  active: boolean
+  /** Existing accounts on this domain. A rule is never retroactive, so this is
+   *  context — but a large number usually means the pattern is too wide. */
+  accounts: number
+}
+
+export interface EmailDomainRuleInput {
+  pattern: string
+  note?: string
+  active?: boolean
+}
+
+export interface EmailDomainCheck {
+  allowed: boolean
+  pattern: string | null
+  message: string | null
+}
+
 // --- Email notification templates (admin editor) ---
 export interface TemplateLocaleData {
   subject: string

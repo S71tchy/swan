@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
+from app import email_policy
 from app.models import User
 from app.notifications import service as notify
 from app.schemas import DevLoginRequest, PasswordLoginRequest, RegisterRequest, UserPublic
@@ -96,6 +97,10 @@ def register(
     name = (body.name or "").strip()
     if not email or "@" not in email:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A valid email is required")
+    # Corporate-address policy (Settings → Email domains). Checked here rather
+    # than in the browser: the blocked list is not public, so the login screen
+    # only ever learns about it from this refusal.
+    email_policy.assert_allowed(db, email)
     if not name:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Your name is required")
     if len(body.password or "") < _MIN_PASSWORD_LEN:

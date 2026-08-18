@@ -41,9 +41,16 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [corporateOnly, setCorporateOnly] = useState(false)
 
   useEffect(() => {
     void api.accounts().then(setAccounts).catch(() => setAccounts([]))
+    // Only whether a work address is required — never which domains are blocked.
+    // That list is internal; the refusal on submit names the one that matters.
+    void api
+      .registrationPolicy()
+      .then((p) => setCorporateOnly(p.corporate_only))
+      .catch(() => setCorporateOnly(false))
   }, [])
 
   function switchMode(next: 'signin' | 'register') {
@@ -180,7 +187,7 @@ export default function Login() {
           <input
             type="email"
             autoComplete="username"
-            placeholder="Email"
+            placeholder={mode === 'register' && corporateOnly ? 'Work email' : 'Email'}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={loginInput}
@@ -242,6 +249,12 @@ export default function Login() {
 
         {mode === 'register' && !error && (
           <div style={{ font: '400 11px/1.55 var(--font-body)', color: 'var(--t-45)', marginTop: 12, textAlign: 'center' }}>
+            {corporateOnly && (
+              <>
+                Register with your corporate email address — personal and disposable addresses are not accepted.
+                <br />
+              </>
+            )}
             New accounts start with no access. A Rights Manager reviews and activates your profile before you can create or publish.
           </div>
         )}

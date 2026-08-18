@@ -153,6 +153,15 @@ export function BellIcon({ size = 16, stroke = 'currentColor', style }: IconProp
   )
 }
 
+export function ShieldIcon({ size = 16, stroke = 'currentColor', style }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" style={style} {...base(size)}>
+      <path d="M8 1.8L13.2 3.9V7.7C13.2 10.7 11.1 13.2 8 14.2C4.9 13.2 2.8 10.7 2.8 7.7V3.9L8 1.8Z" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M5.9 7.9L7.4 9.4L10.2 6.5" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function ChevronRightIcon({ size = 16, stroke = 'currentColor', style }: IconProps) {
   return (
     <svg viewBox="0 0 16 16" style={style} {...base(size)}>

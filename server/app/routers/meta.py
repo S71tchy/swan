@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app import schemas
+from app import email_policy, schemas
 from app.database import get_db
 from app.deps import get_current_user
 from app.enums import CATEGORIES, INDUSTRIES, ROLES, Flow, Severity, TransportMode
@@ -42,6 +42,19 @@ def taxonomy(db: Session = Depends(get_db)):
         "profiles": list(STANDARD_PROFILES.keys()),
         "roles": ROLES,
     }
+
+
+@router.get("/meta/registration-policy", response_model=schemas.RegistrationPolicy)
+def registration_policy(db: Session = Depends(get_db)):
+    """Whether self-registration is restricted to corporate addresses.
+
+    Unauthenticated, because the login screen shows the hint before anyone has
+    signed in — so it returns a boolean and *not* the blocked list. The list is
+    internal configuration; an anonymous caller has no business enumerating it,
+    and the refusal message on POST /auth/register already names the one domain
+    that actually mattered to them.
+    """
+    return schemas.RegistrationPolicy(corporate_only=bool(email_policy.active_rules(db)))
 
 
 @router.get("/meta/countries")

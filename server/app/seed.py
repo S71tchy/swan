@@ -8,11 +8,13 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.database import Base, SessionLocal, engine
+from app.email_policy import DEFAULT_BLOCKED_DOMAINS
 from app.enums import CATEGORIES, INDUSTRIES
 from app.models import (
     Alert,
     AuditLog,
     Category,
+    EmailDomainRule,
     EmailTemplate,
     Industry,
     NotificationSubscription,
@@ -93,6 +95,7 @@ def reset(db) -> None:
     db.query(Place).delete()
     db.query(Category).delete()
     db.query(Industry).delete()
+    db.query(EmailDomainRule).delete()
     db.commit()
 
 
@@ -108,6 +111,18 @@ def seed_taxonomy(db) -> None:
         db.add(Category(name=name, sub_categories=list(subs), position=i))
     for i, name in enumerate(INDUSTRIES):
         db.add(Industry(name=name, position=i))
+    db.commit()
+
+
+def seed_email_domains(db) -> None:
+    """Seed the blocked email domains from `email_policy.DEFAULT_BLOCKED_DOMAINS`.
+
+    Ships non-empty for the same reason the taxonomy does: an empty table is not
+    a neutral default here, it is "any consumer address may register". Rights
+    Managers own the list afterwards (Settings → Email domains).
+    """
+    for pattern, note in DEFAULT_BLOCKED_DOMAINS:
+        db.add(EmailDomainRule(pattern=pattern, note=note, active=True))
     db.commit()
 
 
@@ -458,6 +473,7 @@ def main() -> None:
     try:
         reset(db)
         seed_taxonomy(db)
+        seed_email_domains(db)
         seed_places(db)
         seed_profiles(db)
         users = seed_users(db)
@@ -466,6 +482,7 @@ def main() -> None:
         counts = {
             "categories": db.query(Category).count(),
             "industries": db.query(Industry).count(),
+            "blocked_domains": db.query(EmailDomainRule).count(),
             "places": db.query(Place).count(),
             "profiles": db.query(Profile).count(),
             "users": db.query(User).count(),

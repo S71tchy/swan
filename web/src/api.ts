@@ -9,6 +9,9 @@ import type {
   CategoryInput,
   CategoryRow,
   CountryRef,
+  EmailDomainCheck,
+  EmailDomainRule,
+  EmailDomainRuleInput,
   IndustryRow,
   DashboardStats,
   ExternalVariant,
@@ -20,6 +23,7 @@ import type {
   ProfileInput,
   ProfileRow,
   RegisterInput,
+  RegistrationPolicy,
   RoutingInfo,
   Subscription,
   SubscriptionInput,
@@ -91,6 +95,8 @@ export const api = {
   taxonomy: () => req<Taxonomy>('/meta/taxonomy'),
   places: (q = '') => req<Place[]>(`/meta/places?q=${encodeURIComponent(q)}`),
   countries: () => req<CountryRef[]>('/meta/countries'),
+  /** Is a corporate address required to register? Login screen hint only. */
+  registrationPolicy: () => req<RegistrationPolicy>('/meta/registration-policy'),
 
   // alerts
   feed: (scope: 'published' | 'map' | 'mine' = 'published') =>
@@ -178,6 +184,22 @@ export const api = {
     }),
   adminDeleteIndustry: (name: string) =>
     req<void>(`/admin/industries/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
+  // admin — blocked email domains (registration / user-creation policy)
+  adminEmailDomains: () => req<EmailDomainRule[]>('/admin/email-domains'),
+  adminCreateEmailDomain: (body: EmailDomainRuleInput) =>
+    req<EmailDomainRule>('/admin/email-domains', { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdateEmailDomain: (pattern: string, body: Partial<EmailDomainRuleInput>) =>
+    req<EmailDomainRule>(`/admin/email-domains/${encodeURIComponent(pattern)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  adminDeleteEmailDomain: (pattern: string) =>
+    req<void>(`/admin/email-domains/${encodeURIComponent(pattern)}`, { method: 'DELETE' }),
+  /** Would this address be refused? Asks the server rather than re-implementing
+   *  the wildcard/subdomain rules in the browser — one definition of "blocked". */
+  adminCheckEmailDomain: (email: string) =>
+    req<EmailDomainCheck>('/admin/email-domains/check', { method: 'POST', body: JSON.stringify({ email }) }),
 
   // admin — email templates
   adminTemplates: () => req<TemplateEntry[]>('/admin/templates'),

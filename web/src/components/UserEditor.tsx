@@ -12,7 +12,7 @@ import {
   ToggleRow,
   inputStyle,
 } from './adminUi'
-import type { AdminUserRow, CountryRef, ProfileRow, Subscription } from '../types'
+import type { AdminUserRow, CountryRef, EmailDomainRule, ProfileRow, Subscription } from '../types'
 
 // The user identity + rights + subscriptions editor, opened from Settings →
 // Users. Lives in components/ (not the screen) because the screen is now just
@@ -187,10 +187,21 @@ export function UserEditor({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [subs, setSubs] = useState<Subscription[]>([])
+  // The registration policy, so the Email field can say what it will refuse
+  // before the manager fills in two more steps. The *check* below still asks the
+  // server — this list is only the explanation.
+  const [blocked, setBlocked] = useState<EmailDomainRule[]>([])
 
   useEffect(() => {
     if (userId) void api.adminUserSubscriptions(userId).then(setSubs).catch(() => setSubs([]))
   }, [userId])
+
+  useEffect(() => {
+    void api
+      .adminEmailDomains()
+      .then((rows) => setBlocked(rows.filter((r) => r.active)))
+      .catch(() => setBlocked([]))
+  }, [])
   async function reloadSubs() {
     if (userId) setSubs(await api.adminUserSubscriptions(userId))
   }
@@ -222,13 +233,38 @@ export function UserEditor({
     return null
   }
 
+  // The blocked-domain policy, asked of the server rather than re-implemented
+  // here: the subdomain and wildcard rules have exactly one definition, in
+  // app/email_policy.py, and this must not become a second one that drifts.
+  // Only on a changed address, mirroring the server — an account already living
+  // on a domain blocked after the fact has to stay editable.
+  async function domainError(): Promise<string | null> {
+    const email = form.email.trim()
+    if (!email || email.toLowerCase() === initial.email.trim().toLowerCase()) return null
+    try {
+      const res = await api.adminCheckEmailDomain(email)
+      return res.allowed ? null : (res.message ?? 'That email domain is blocked.')
+    } catch {
+      // A failed pre-check must not wedge the form; the save is gated anyway.
+      return null
+    }
+  }
+
   // Guard the step change rather than the save: on a new user, failing required
-  // fields at the Create button means backtracking through the whole form.
-  function goto(next: StepId) {
+  // fields at the Create button means backtracking through the whole form — and
+  // a blocked domain is exactly that kind of failure, so it is caught here too.
+  async function goto(next: StepId) {
     if (isNew && step === 'identity' && next !== 'identity') {
       const bad = identityError()
       if (bad) {
         setError(bad)
+        return
+      }
+      setBusy(true)
+      const blockedMsg = await domainError()
+      setBusy(false)
+      if (blockedMsg) {
+        setError(blockedMsg)
         return
       }
     }
@@ -332,7 +368,7 @@ export function UserEditor({
               ✕
             </button>
           </div>
-          <StepTabs steps={steps} current={step} onPick={goto} />
+          <StepTabs steps={steps} current={step} onPick={(id) => void goto(id)} />
           <div style={{ height: 1, background: 'rgba(255,255,255,.08)' }} />
         </div>
 
@@ -383,6 +419,15 @@ export function UserEditor({
                 </Field>
                 <Field label="Email">
                   <input style={inputStyle} value={form.email} onChange={(e) => set('email', e.target.value)} />
+                  {blocked.length > 0 && (
+                    <span style={{ font: '400 10.5px/1.5 var(--font-body)', color: 'var(--t-45)' }}>
+                      Corporate addresses only —{' '}
+                      <span style={{ color: 'var(--t-60)' }}>
+                        {blocked.slice(0, 3).map((r) => r.pattern).join(', ')}
+                      </span>
+                      {blocked.length > 3 ? ` and ${blocked.length - 3} more` : ''} blocked.
+                    </span>
+                  )}
                 </Field>
                 <Field label="Job title">
                   <input style={inputStyle} value={form.job_title} onChange={(e) => set('job_title', e.target.value)} />
@@ -568,7 +613,7 @@ export function UserEditor({
             )}
             <div style={{ flex: 1 }} />
             {stepIndex > 0 && (
-              <Button variant="ghost" onClick={() => goto(steps[stepIndex - 1].id)}>
+              <Button variant="ghost" onClick={() => void goto(steps[stepIndex - 1].id)}>
                 ← Back
               </Button>
             )}
@@ -578,7 +623,7 @@ export function UserEditor({
             {/* A new user must reach the last step before it can be created; an
                 existing one can be saved from wherever the manager is standing. */}
             {isNew && !isLastStep ? (
-              <Button variant="primary" onClick={() => goto(steps[stepIndex + 1].id)}>
+              <Button variant="primary" disabled={busy} onClick={() => void goto(steps[stepIndex + 1].id)}>
                 Next →
               </Button>
             ) : (

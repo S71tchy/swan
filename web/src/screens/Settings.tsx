@@ -15,6 +15,7 @@ import {
   PinIcon,
   ProfilesIcon,
   RightsIcon,
+  ShieldIcon,
   UsersIcon,
 } from '../components/icons'
 
@@ -129,6 +130,8 @@ export default function Settings() {
     pending: number
     profiles: number
     places: number
+    domains: number
+    domainsEnforced: number
     templates: number
     customised: number
   } | null>(null)
@@ -144,12 +147,15 @@ export default function Settings() {
       api.adminProfiles().catch(() => []),
       api.adminPlaces().catch(() => []),
       api.adminTemplates().catch(() => []),
-    ]).then(([users, profiles, places, templates]) =>
+      api.adminEmailDomains().catch(() => []),
+    ]).then(([users, profiles, places, templates, domains]) =>
       setCounts({
         users: users.length,
         pending: users.filter((u) => u.status === 'pending').length,
         profiles: profiles.length,
         places: places.length,
+        domains: domains.length,
+        domainsEnforced: domains.filter((d) => d.active).length,
         templates: templates.length,
         customised: templates.filter((t) => t.en.overridden || t.fr.overridden).length,
       }),
@@ -193,6 +199,19 @@ export default function Settings() {
           : n(counts.users, 'user', 'users')
         : undefined,
       alert: (counts?.pending ?? 0) > 0,
+    },
+    {
+      key: 'email-domains',
+      title: 'Email domains',
+      description: 'Domains no account may be created on — keeps registration on corporate addresses.',
+      path: '/admin/email-domains',
+      icon: (s) => <ShieldIcon size={18} stroke={s} />,
+      metric: counts
+        ? counts.domains === 0
+          ? 'Nothing blocked'
+          : `${counts.domainsEnforced} enforced of ${counts.domains}`
+        : undefined,
+      alert: counts?.domains === 0,
     },
     {
       key: 'profiles',
@@ -288,7 +307,7 @@ export default function Settings() {
               color: 'var(--t-50)',
             }}
           >
-            Users, profiles, locations, notification templates and the API reference appear here for Rights Managers.
+            Users, profiles, locations, email domains, notification templates and the API reference appear here for Rights Managers.
             Ask one to grant you access if you need them.
           </div>
         )}
