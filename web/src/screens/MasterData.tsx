@@ -5,8 +5,8 @@ import { Button } from '../components/ui'
 import { PlusIcon } from '../components/icons'
 import { LocationPinPicker } from '../components/LocationPinPicker'
 import { CountryFlag } from '../components/CountryFlag'
-import { AdminGate, AdminScreen, Drawer, Field, FormError, inputStyle, listPanelStyle } from '../components/adminUi'
-import type { CountryRef, PlaceRow } from '../types'
+import { AdminGate, AdminScreen, Drawer, DuplicateWarning, Field, FormError, inputStyle, listPanelStyle } from '../components/adminUi'
+import type { CountryRef, DuplicateMatch, PlaceRow } from '../types'
 
 type PlaceForm = { code: string; name: string; country: string; lat: number | null; lng: number | null; aliases: string }
 
@@ -24,12 +24,16 @@ function PlaceEditor({
   countries: CountryRef[]
   usage: number
   onClose: () => void
-  onSaved: (payload: PlaceForm) => Promise<void>
+  onSaved: (payload: PlaceForm, confirmDuplicate: boolean) => Promise<void>
   onDeleted?: () => Promise<void>
 }) {
   const [form, setForm] = useState<PlaceForm>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Suspected duplicates, and whether the operator has already seen them. The
+  // second press of the same button is the confirmation -- no extra dialog, and
+  // no way to confirm something you were never shown.
+  const [dups, setDups] = useState<DuplicateMatch[]>([])
 
   const ready = form.code.trim() && form.name.trim() && form.country && form.lat != null && form.lng != null
 
@@ -41,7 +45,23 @@ function PlaceEditor({
     }
     setBusy(true)
     try {
-      await onSaved(form)
+      // Already warned about these exact matches -> this press is the confirm.
+      const confirming = dups.length > 0
+      if (!confirming) {
+        const report = await api.adminCheckPlaceDuplicate({
+          name: form.name,
+          country: form.country,
+          lat: form.lat,
+          lng: form.lng,
+          exclude_code: isNew ? undefined : form.code,
+        })
+        if (report.matches.length > 0) {
+          setDups(report.matches)
+          setBusy(false)
+          return
+        }
+      }
+      await onSaved(form, confirming)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not save.')
     } finally {
@@ -96,7 +116,16 @@ function PlaceEditor({
           </Field>
         </div>
         <Field label="Name">
-          <input style={inputStyle} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          {/* Editing the identity clears a previous warning: the matches were
+              about the old values, so confirming them would confirm nothing. */}
+          <input
+            style={inputStyle}
+            value={form.name}
+            onChange={(e) => {
+              setDups([])
+              setForm((f) => ({ ...f, name: e.target.value }))
+            }}
+          />
         </Field>
         <Field label="Aliases (comma-separated, for search)">
           <input style={inputStyle} value={form.aliases} onChange={(e) => setForm((f) => ({ ...f, aliases: e.target.value }))} />
@@ -107,10 +136,17 @@ function PlaceEditor({
         </div>
 
         {error && <FormError>{error}</FormError>}
+        <DuplicateWarning matches={dups} />
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4 }}>
           <Button variant="primary" disabled={busy} onClick={save}>
-            {isNew ? 'Create location' : 'Save changes'}
+            {dups.length > 0
+              ? isNew
+                ? 'Create anyway'
+                : 'Save anyway'
+              : isNew
+                ? 'Create location'
+                : 'Save changes'}
           </Button>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           {!isNew && onDeleted && (
@@ -147,12 +183,12 @@ export default function MasterData() {
   if (!user) return null
   if (!isManager) return <AdminGate breadcrumb="Settings · Locations" />
 
-  async function savePlace(form: PlaceForm, isNew: boolean) {
+  async function savePlace(form: PlaceForm, isNew: boolean, confirmDuplicate = false) {
     const aliases = form.aliases.split(',').map((a) => a.trim()).filter(Boolean)
     if (isNew) {
-      await api.adminCreatePlace({ code: form.code, name: form.name, country: form.country, lat: form.lat as number, lng: form.lng as number, aliases })
+      await api.adminCreatePlace({ code: form.code, name: form.name, country: form.country, lat: form.lat as number, lng: form.lng as number, aliases, confirm_duplicate: confirmDuplicate })
     } else {
-      await api.adminUpdatePlace(form.code, { name: form.name, country: form.country, lat: form.lat as number, lng: form.lng as number, aliases })
+      await api.adminUpdatePlace(form.code, { name: form.name, country: form.country, lat: form.lat as number, lng: form.lng as number, aliases, confirm_duplicate: confirmDuplicate })
     }
     setEditPlace(null)
     await reload()
@@ -263,7 +299,7 @@ export default function MasterData() {
           countries={countries}
           usage={editPlace.usage}
           onClose={() => setEditPlace(null)}
-          onSaved={(form) => savePlace(form, editPlace.isNew)}
+          onSaved={(form, confirm) => savePlace(form, editPlace.isNew, confirm)}
           onDeleted={!editPlace.isNew ? () => deletePlace(editPlace.form.code) : undefined}
         />
       )}

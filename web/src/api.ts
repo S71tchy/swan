@@ -11,6 +11,7 @@ import type {
   CategoryInput,
   CategoryRow,
   CountryRef,
+  DuplicateReport,
   EmailDomainCheck,
   EmailDomainRule,
   EmailDomainRuleInput,
@@ -177,6 +178,17 @@ export const api = {
   adminDeleteProfile: (name: string) =>
     req<void>(`/admin/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   adminPlaces: () => req<PlaceRow[]>('/admin/places'),
+  /** Would this place look like a duplicate? Asked before saving so the warning
+   *  lands beside the fields instead of arriving as a rejected save. The server
+   *  gates the write regardless — this is the same predicate, not a substitute. */
+  adminCheckPlaceDuplicate: (body: {
+    name: string
+    country: string
+    lat?: number | null
+    lng?: number | null
+    exclude_code?: string
+  }) => req<DuplicateReport>('/admin/places/check-duplicate', { method: 'POST', body: JSON.stringify(body) }),
+
   adminCreatePlace: (body: PlaceInput) =>
     req<PlaceRow>('/admin/places', { method: 'POST', body: JSON.stringify(body) }),
   adminUpdatePlace: (code: string, body: Partial<Omit<PlaceInput, 'code'>>) =>
@@ -190,6 +202,16 @@ export const api = {
   // zones — custom polygon / radius areas
   zones: () => req<ZoneRow[]>('/meta/zones'),
   adminZones: () => req<ZoneRow[]>('/admin/zones'),
+  adminCheckZoneDuplicate: (body: {
+    name: string
+    kind: 'polygon' | 'radius'
+    geometry?: { type: 'Polygon'; coordinates: number[][][] }
+    lat?: number | null
+    lng?: number | null
+    radius_m?: number | null
+    exclude_code?: string
+  }) => req<DuplicateReport>('/admin/zones/check-duplicate', { method: 'POST', body: JSON.stringify(body) }),
+
   adminCreateZone: (body: ZoneInput) =>
     req<ZoneRow>('/admin/zones', { method: 'POST', body: JSON.stringify(body) }),
   adminUpdateZone: (code: string, body: Partial<ZoneInput>) =>

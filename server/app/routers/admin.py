@@ -32,7 +32,7 @@ from app.models import (
 from app import email_policy
 from app.notifications import service as notify
 from app.notifications.templates import CATALOG, CATALOG_BY_KEY, default_template
-from app import geo
+from app import dedupe, geo
 from app.reference import COUNTRY_CATALOGUE, country_meta
 from app.rights import (
     effective_external_countries,
@@ -517,6 +517,44 @@ def _place_row(p: Place, usage: dict[str, int]) -> schemas.PlaceRow:
     )
 
 
+def _duplicate_matches(matches) -> list[schemas.DuplicateMatch]:
+    return [
+        schemas.DuplicateMatch(code=m.code, name=m.name, reason=m.reason, distance_m=m.distance_m)
+        for m in matches
+    ]
+
+
+def _refuse_duplicates(matches) -> None:
+    """409 naming what was matched, once.
+
+    The caller repeats the request with `confirm_duplicate` to proceed, so a
+    genuine collision can always be recorded while nothing is duplicated by
+    accident. See app/dedupe for why this is not a uniqueness constraint.
+    """
+    if not matches:
+        return
+    listed = "; ".join(f"{m.name} ({m.code}) - {m.reason}" for m in matches[:3])
+    more = f" and {len(matches) - 3} more" if len(matches) > 3 else ""
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        f"This looks like a duplicate of {listed}{more}. Save again to create it anyway.",
+    )
+
+
+@router.post("/places/check-duplicate", response_model=schemas.DuplicateReport)
+def check_place_duplicate(
+    body: schemas.PlaceDuplicateCheck,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_rights_manager),
+):
+    """What the editor asks before saving, so the warning appears beside the
+    fields rather than as a rejected save."""
+    matches = dedupe.find_place_duplicates(
+        db.query(Place).all(), body.name, body.country, body.lat, body.lng, body.exclude_code
+    )
+    return schemas.DuplicateReport(matches=_duplicate_matches(matches))
+
+
 @router.get("/places", response_model=list[schemas.PlaceRow])
 def list_places(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
     places = db.query(Place).order_by(Place.country, Place.name).all()
@@ -537,6 +575,13 @@ def create_place(
         raise HTTPException(status.HTTP_409_CONFLICT, "A place with that code already exists")
     country = _validate_country(body.country)
     _validate_coords(body.lat, body.lng)
+    if not body.confirm_duplicate:
+        # Both doors into the gazetteer arrive here -- Settings, and the inline
+        # CustomPlaceForm on the alert page -- so this is the one place the
+        # check has to live for it to cover the traffic that matters.
+        _refuse_duplicates(
+            dedupe.find_place_duplicates(db.query(Place).all(), body.name, country, body.lat, body.lng)
+        )
     place = Place(
         code=code,
         name=body.name.strip(),
@@ -578,6 +623,15 @@ def update_place(
         place.lng = lng
     if "aliases" in updates and updates["aliases"] is not None:
         place.aliases = [a.strip() for a in updates["aliases"] if a.strip()]
+    # Only when the identity moved: a rename or a relocation can create a
+    # duplicate, editing aliases cannot.
+    if not body.confirm_duplicate and any(k in updates for k in ("name", "country", "lat", "lng")):
+        _refuse_duplicates(
+            dedupe.find_place_duplicates(
+                db.query(Place).all(), place.name, place.country, place.lat, place.lng,
+                exclude_code=place.code,
+            )
+        )
     audit.record(db, actor, "place.updated", place.code, target_type="place", detail={"fields": list(updates)})
     db.commit()
     return _place_row(place, _place_usage(db.query(Alert).all()))
@@ -831,6 +885,22 @@ def _zone_kind(kind: str) -> str:
     return k
 
 
+@router.post("/zones/check-duplicate", response_model=schemas.DuplicateReport)
+def check_zone_duplicate(
+    body: schemas.ZoneDuplicateCheck,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_rights_manager),
+):
+    kind = _zone_kind(body.kind)
+    # Resolved through the same code the write path uses, so the shape being
+    # checked is the shape that would be stored.
+    ring, lat, lng, radius = _zone_geometry(kind, body.geometry, body.lat, body.lng, body.radius_m)
+    matches = dedupe.find_zone_duplicates(
+        db.query(Zone).all(), body.name, ring, lat, lng, radius, body.exclude_code
+    )
+    return schemas.DuplicateReport(matches=_duplicate_matches(matches))
+
+
 @router.get("/zones", response_model=list[schemas.ZoneRow])
 def list_zones(db: Session = Depends(get_db), _: User = Depends(require_rights_manager)):
     usage = _zone_usage(db.query(Alert).all())
@@ -852,6 +922,10 @@ def create_zone(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A zone name is required")
     kind = _zone_kind(body.kind)
     ring, lat, lng, radius = _zone_geometry(kind, body.geometry, body.lat, body.lng, body.radius_m)
+    if not body.confirm_duplicate:
+        _refuse_duplicates(
+            dedupe.find_zone_duplicates(db.query(Zone).all(), body.name, ring, lat, lng, radius)
+        )
 
     zone = Zone(
         code=code,
@@ -915,6 +989,16 @@ def update_zone(
         )
         zone.kind, zone.geometry = kind, ring
         zone.lat, zone.lng, zone.radius_m = lat, lng, radius
+
+    if not body.confirm_duplicate and any(
+        k in updates for k in ("name", "kind", "geometry", "lat", "lng", "radius_m")
+    ):
+        _refuse_duplicates(
+            dedupe.find_zone_duplicates(
+                db.query(Zone).all(), zone.name, zone.geometry, zone.lat, zone.lng,
+                zone.radius_m, exclude_code=zone.code,
+            )
+        )
 
     after = {"countries": list(zone.countries or []), "kind": zone.kind}
     audit.record(

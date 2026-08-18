@@ -318,6 +318,8 @@ export interface PlaceInput {
   lat: number
   lng: number
   aliases?: string[]
+  /** Accept a flagged duplicate and create it anyway. */
+  confirm_duplicate?: boolean
 }
 
 // --- Editable taxonomy (Settings → Reference data) ---
@@ -345,6 +347,19 @@ export interface IndustryRow {
   name: string
   position: number
   usage: number
+}
+
+// --- Duplicate detection (places + zones) ---
+export interface DuplicateMatch {
+  code: string
+  name: string
+  /** Human-readable and shown verbatim — the server owns the wording. */
+  reason: string
+  distance_m: number | null
+}
+
+export interface DuplicateReport {
+  matches: DuplicateMatch[]
 }
 
 // --- Zones (custom polygon / radius master data) ---
@@ -375,6 +390,7 @@ export interface ZoneInput {
   radius_m?: number
   aliases?: string[]
   notes?: string
+  confirm_duplicate?: boolean
 }
 
 // --- Analytics ---

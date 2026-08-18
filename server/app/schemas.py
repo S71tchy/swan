@@ -438,6 +438,8 @@ class PlaceCreate(BaseModel):
     lat: float
     lng: float
     aliases: list[str] = Field(default_factory=list)
+    # Set by the caller to accept a flagged duplicate and proceed.
+    confirm_duplicate: bool = False
 
 
 class PlaceUpdate(BaseModel):
@@ -446,6 +448,7 @@ class PlaceUpdate(BaseModel):
     lat: float | None = None
     lng: float | None = None
     aliases: list[str] | None = None
+    confirm_duplicate: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -497,6 +500,43 @@ class IndustryUpdate(BaseModel):
 # Email domain policy (blocked domains for registration / user creation)
 # --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
+# Duplicate detection (places + zones)
+#
+# Advice, not a constraint: the create/update routes refuse once and accept the
+# same request with `confirm_duplicate`, so a genuine collision can always be
+# recorded but never created by accident. See app/dedupe for why name alone is
+# the wrong axis.
+# --------------------------------------------------------------------------- #
+class DuplicateMatch(BaseModel):
+    code: str
+    name: str
+    reason: str                      # human-readable, shown verbatim
+    distance_m: float | None = None
+
+
+class DuplicateReport(BaseModel):
+    matches: list[DuplicateMatch]
+
+
+class PlaceDuplicateCheck(BaseModel):
+    name: str
+    country: str
+    lat: float | None = None
+    lng: float | None = None
+    exclude_code: str | None = None  # set when editing, so it ignores itself
+
+
+class ZoneDuplicateCheck(BaseModel):
+    name: str
+    kind: str = "polygon"
+    geometry: dict | None = None
+    lat: float | None = None
+    lng: float | None = None
+    radius_m: float | None = None
+    exclude_code: str | None = None
+
+
+# --------------------------------------------------------------------------- #
 # Zones (custom polygon / radius master data)
 # --------------------------------------------------------------------------- #
 class ZoneRow(BaseModel):
@@ -527,6 +567,7 @@ class ZoneCreate(BaseModel):
     radius_m: float | None = None
     aliases: list[str] = Field(default_factory=list)
     notes: str = ""
+    confirm_duplicate: bool = False
 
 
 class ZoneUpdate(BaseModel):
@@ -539,6 +580,7 @@ class ZoneUpdate(BaseModel):
     radius_m: float | None = None
     aliases: list[str] | None = None
     notes: str | None = None
+    confirm_duplicate: bool = False
 
 
 # --------------------------------------------------------------------------- #

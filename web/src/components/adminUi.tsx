@@ -293,6 +293,44 @@ export function CountryPicker({
   )
 }
 
+/** Suspected-duplicate warning, shared by the place and zone editors.
+ *
+ * Deliberately not styled as an error: the save is not wrong, it is unusual.
+ * Saying what was matched and why lets the operator judge it — "Santiago is
+ * 4000 km away" and "Santiago is 1 km away" are the same name and completely
+ * different decisions.
+ */
+export function DuplicateWarning({ matches }: { matches: { code: string; name: string; reason: string }[] }) {
+  if (matches.length === 0) return null
+  return (
+    <div
+      style={{
+        borderRadius: 10,
+        border: '1px solid var(--yellow-border-strong)',
+        background: 'var(--yellow-tint)',
+        padding: '11px 13px',
+        font: '400 11.5px/1.6 var(--font-body)',
+        color: 'var(--t-70)',
+      }}
+    >
+      <div style={{ font: '600 12px var(--font-body)', color: 'var(--agl-yellow)', marginBottom: 5 }}>
+        This may already exist
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 16 }}>
+        {matches.map((m) => (
+          <li key={m.code}>
+            <b style={{ color: 'var(--t-85, #fff)' }}>{m.name}</b>{' '}
+            <span style={{ color: 'var(--t-45)' }}>({m.code})</span> — {m.reason}
+          </li>
+        ))}
+      </ul>
+      <div style={{ color: 'var(--t-50)', marginTop: 6 }}>
+        Save again to create it anyway.
+      </div>
+    </div>
+  )
+}
+
 // Inline error box shared by every editor drawer.
 export function FormError({ children }: { children: React.ReactNode }) {
   return (

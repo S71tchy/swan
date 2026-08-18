@@ -11,12 +11,13 @@ import {
   Chip,
   CountryPicker,
   Drawer,
+  DuplicateWarning,
   Field,
   FormError,
   inputStyle,
   listPanelStyle,
 } from '../components/adminUi'
-import type { CountryRef, ZoneRow } from '../types'
+import type { CountryRef, DuplicateMatch, ZoneRow } from '../types'
 
 // --------------------------------------------------------------------------- //
 // Settings → Zones
@@ -94,15 +95,23 @@ function ZoneEditor({
   countries: CountryRef[]
   usage: number
   onClose: () => void
-  onSaved: (d: Draft) => Promise<void>
+  onSaved: (d: Draft, confirmDuplicate: boolean) => Promise<void>
   onDeleted?: () => Promise<void>
 }) {
   const [d, setD] = useState<Draft>(initial)
   const [suggested, setSuggested] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Same warn-then-confirm as the gazetteer: the second press of the button is
+  // the confirmation, so nothing can be confirmed that was never shown.
+  const [dups, setDups] = useState<DuplicateMatch[]>([])
 
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }))
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
+    // A warning describes the shape and name it was raised for; changing either
+    // makes it stale, so it is cleared rather than left there to be confirmed.
+    if (k === 'name' || k === 'points' || k === 'center' || k === 'radiusKm' || k === 'kind') setDups([])
+    setD((p) => ({ ...p, [k]: v }))
+  }
 
   const shapeReady = d.kind === 'radius' ? d.center !== null : d.points.length >= 3
   const ready = d.code.trim() && d.name.trim() && shapeReady
@@ -120,7 +129,27 @@ function ZoneEditor({
     }
     setBusy(true)
     try {
-      await onSaved(d)
+      const confirming = dups.length > 0
+      if (!confirming) {
+        const report = await api.adminCheckZoneDuplicate({
+          name: d.name,
+          kind: d.kind,
+          geometry:
+            d.kind === 'polygon'
+              ? { type: 'Polygon' as const, coordinates: [[...d.points, d.points[0]]] }
+              : undefined,
+          lat: d.kind === 'radius' ? d.center?.[1] : undefined,
+          lng: d.kind === 'radius' ? d.center?.[0] : undefined,
+          radius_m: d.kind === 'radius' ? Math.round(d.radiusKm * 1000) : undefined,
+          exclude_code: isNew ? undefined : d.code,
+        })
+        if (report.matches.length > 0) {
+          setDups(report.matches)
+          setBusy(false)
+          return
+        }
+      }
+      await onSaved(d, confirming)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not save.')
     } finally {
@@ -143,6 +172,7 @@ function ZoneEditor({
         </div>
 
         {error && <FormError>{error}</FormError>}
+        <DuplicateWarning matches={dups} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <Field label="Code">
@@ -284,7 +314,13 @@ function ZoneEditor({
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4 }}>
           <Button variant="primary" disabled={busy} onClick={save}>
-            {isNew ? 'Create zone' : 'Save changes'}
+            {dups.length > 0
+              ? isNew
+                ? 'Create anyway'
+                : 'Save anyway'
+              : isNew
+                ? 'Create zone'
+                : 'Save changes'}
           </Button>
           <Button variant="ghost" onClick={onClose}>
             Cancel
@@ -349,7 +385,7 @@ export default function AdminZones() {
   if (!user) return null
   if (!isManager) return <AdminGate breadcrumb="Settings · Zones" />
 
-  async function save(d: Draft, isNew: boolean) {
+  async function save(d: Draft, isNew: boolean, confirmDuplicate = false) {
     const aliases = d.aliases.split(',').map((a) => a.trim()).filter(Boolean)
     const body =
       d.kind === 'radius'
@@ -372,8 +408,9 @@ export default function AdminZones() {
             aliases,
             notes: d.notes.trim(),
           }
-    if (isNew) await api.adminCreateZone({ code: d.code.trim().toUpperCase(), ...body })
-    else await api.adminUpdateZone(d.code, body)
+    if (isNew)
+      await api.adminCreateZone({ code: d.code.trim().toUpperCase(), ...body, confirm_duplicate: confirmDuplicate })
+    else await api.adminUpdateZone(d.code, { ...body, confirm_duplicate: confirmDuplicate })
     setEditing(null)
     await reload()
   }
@@ -491,7 +528,7 @@ export default function AdminZones() {
           countries={countries}
           usage={editing.usage}
           onClose={() => setEditing(null)}
-          onSaved={(d) => save(d, editing.isNew)}
+          onSaved={(d, confirm) => save(d, editing.isNew, confirm)}
           onDeleted={
             editing.isNew
               ? undefined
